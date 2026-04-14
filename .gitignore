@@ -1,0 +1,17 @@
+.DS_Store
+node_modules
+dist
+coverage
+.turbo
+.terraform
+terraform/.terraform
+*.tfstate
+*.tfstate.backup
+terraform.tfvars
+.env
+.env.*
+!.env.example
+*.log
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
