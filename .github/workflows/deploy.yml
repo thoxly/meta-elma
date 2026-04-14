@@ -73,7 +73,10 @@ jobs:
 
       - name: Terraform init
         working-directory: terraform
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="access_key=${{ secrets.YC_S3_ACCESS_KEY }}" \
+            -backend-config="secret_key=${{ secrets.YC_S3_SECRET_KEY }}"
 
       - name: Terraform apply
         working-directory: terraform
