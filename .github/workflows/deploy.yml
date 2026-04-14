@@ -1,0 +1,86 @@
+name: Deploy serverless backend
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      YC_CLOUD_ID: ${{ vars.YC_CLOUD_ID }}
+      YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID }}
+
+      TF_VAR_cloud_id: ${{ vars.TF_VAR_cloud_id }}
+      TF_VAR_folder_id: ${{ vars.TF_VAR_folder_id }}
+      TF_VAR_registry_id: ${{ vars.TF_VAR_registry_id }}
+      TF_VAR_bucket_name: ${{ vars.TF_VAR_bucket_name }}
+      TF_VAR_runtime_sa_id: ${{ vars.TF_VAR_runtime_sa_id }}
+      TF_VAR_lockbox_secret_id: ${{ vars.TF_VAR_lockbox_secret_id }}
+      TF_VAR_lockbox_secret_version_id: ${{ vars.TF_VAR_lockbox_secret_version_id }}
+      TF_VAR_ydb_name: ${{ vars.TF_VAR_ydb_name }}
+      TF_VAR_container_name: ${{ vars.TF_VAR_container_name }}
+      TF_VAR_api_gateway_name: ${{ vars.TF_VAR_api_gateway_name }}
+      TF_VAR_image_name: ${{ vars.TF_VAR_image_name }}
+      TF_VAR_app_port: ${{ vars.TF_VAR_app_port }}
+      TF_VAR_container_memory: ${{ vars.TF_VAR_container_memory }}
+      TF_VAR_container_cores: ${{ vars.TF_VAR_container_cores }}
+      TF_VAR_container_core_fraction: ${{ vars.TF_VAR_container_core_fraction }}
+      TF_VAR_container_execution_timeout: ${{ vars.TF_VAR_container_execution_timeout }}
+      TF_VAR_container_concurrency: ${{ vars.TF_VAR_container_concurrency }}
+
+      TF_VAR_image_tag: ${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+      - name: Configure Yandex Cloud auth
+        run: |
+          printf '%s' '${{ secrets.YC_SA_KEY_JSON }}' > "$RUNNER_TEMP/yc-key.json"
+          yc config profile create ci || true
+          yc config set service-account-key "$RUNNER_TEMP/yc-key.json"
+          yc config set cloud-id "$YC_CLOUD_ID"
+          yc config set folder-id "$YC_FOLDER_ID"
+          echo "YC_TOKEN=$(yc iam create-token)" >> $GITHUB_ENV
+
+      - name: Configure Docker auth for Yandex Container Registry
+        run: |
+          yc container registry configure-docker
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -f docker/Dockerfile \
+            -t cr.yandex/${TF_VAR_registry_id}/${TF_VAR_image_name}:${TF_VAR_image_tag} \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push cr.yandex/${TF_VAR_registry_id}/${TF_VAR_image_name}:${TF_VAR_image_tag}
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Smoke test /health
+        working-directory: terraform
+        run: |
+          API_URL=$(terraform output -raw api_gateway_url)
+          curl -fsS "$API_URL/health"
