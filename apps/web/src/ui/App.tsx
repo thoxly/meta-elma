@@ -4,12 +4,28 @@ const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ||
   "http://localhost:8080";
 
+type UserScopedContext = {
+  fetchedAt: string;
+  namespaces: Array<{ namespace: string; title: string }>;
+  apps: Array<{ namespace: string; code: string; title: string }>;
+  processes: Array<{ namespace: string; code: string; title: string }>;
+  groups: Array<{ groupId: string; title: string }>;
+  appSchemas: Array<{
+    namespace: string;
+    appCode: string;
+    fields: Array<{ code: string; title: string; type: string; required: boolean }>;
+  }>;
+};
+
 export function App() {
   const [ownerUserId, setOwnerUserId] = useState("user-1");
   const [connectionId, setConnectionId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [traceId, setTraceId] = useState("");
+  const [context, setContext] = useState<UserScopedContext | null>(null);
+  const [contextError, setContextError] = useState("");
+  const [isContextLoading, setIsContextLoading] = useState(false);
 
   async function createConnection() {
     const res = await fetch(`${API_BASE_URL}/connections`, {
@@ -33,6 +49,25 @@ export function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ connectionId })
     });
+  }
+
+  async function loadContextDetails() {
+    if (!connectionId) return;
+    setIsContextLoading(true);
+    setContextError("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/debug/context?connectionId=${encodeURIComponent(connectionId)}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as UserScopedContext;
+      setContext(json);
+    } catch (error) {
+      setContext(null);
+      setContextError(error instanceof Error ? error.message : "Failed to load context");
+    } finally {
+      setIsContextLoading(false);
+    }
   }
 
   async function askQuestion() {
@@ -69,6 +104,45 @@ export function App() {
         <button onClick={refreshContext} disabled={!connectionId}>
           Manual refresh context
         </button>
+        <button onClick={loadContextDetails} disabled={!connectionId || isContextLoading}>
+          {isContextLoading ? "Loading context..." : "Load context details"}
+        </button>
+        {contextError ? <p style={{ color: "crimson" }}>Context error: {contextError}</p> : null}
+        {context ? (
+          <div style={{ marginTop: 12 }}>
+            <p>Fetched at: {context.fetchedAt}</p>
+            <p>
+              Namespaces: {context.namespaces.length} | Apps: {context.apps.length} | Processes:{" "}
+              {context.processes.length} | Groups: {context.groups.length} | Schemas: {context.appSchemas.length}
+            </p>
+
+            <h3>Namespaces</h3>
+            <pre>{JSON.stringify(context.namespaces.slice(0, 20), null, 2)}</pre>
+
+            <h3>Apps</h3>
+            <pre>{JSON.stringify(context.apps.slice(0, 50), null, 2)}</pre>
+
+            <h3>Processes</h3>
+            <pre>{JSON.stringify(context.processes.slice(0, 50), null, 2)}</pre>
+
+            <h3>Groups</h3>
+            <pre>{JSON.stringify(context.groups.slice(0, 50), null, 2)}</pre>
+
+            <h3>App Schemas (first 10, fields only)</h3>
+            <pre>
+              {JSON.stringify(
+                context.appSchemas.slice(0, 10).map((schema) => ({
+                  namespace: schema.namespace,
+                  appCode: schema.appCode,
+                  fieldCount: schema.fields.length,
+                  fields: schema.fields.slice(0, 20)
+                })),
+                null,
+                2
+              )}
+            </pre>
+          </div>
+        ) : null}
       </section>
 
       <section>
