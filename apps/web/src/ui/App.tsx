@@ -1,6 +1,8 @@
 import { useState } from "react";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+const API_BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ||
+  "http://localhost:8080";
 
 export function App() {
   const [ownerUserId, setOwnerUserId] = useState("user-1");
@@ -10,7 +12,7 @@ export function App() {
   const [traceId, setTraceId] = useState("");
 
   async function createConnection() {
-    const res = await fetch(`${API_URL}/connections`, {
+    const res = await fetch(`${API_BASE_URL}/connections`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -26,7 +28,7 @@ export function App() {
 
   async function refreshContext() {
     if (!connectionId) return;
-    await fetch(`${API_URL}/context/refresh`, {
+    await fetch(`${API_BASE_URL}/context/refresh`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ connectionId })
@@ -35,7 +37,7 @@ export function App() {
 
   async function askQuestion() {
     if (!connectionId || !question) return;
-    const res = await fetch(`${API_URL}/chat`, {
+    const res = await fetch(`${API_BASE_URL}/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
