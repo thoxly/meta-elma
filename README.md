@@ -2,6 +2,13 @@
 
 Product-ready prototype for ELMA365 metadata context chat with user-scoped access model.
 
+## Quick runbook
+- **Что это:** serverless backend + web UI для чат-доступа к ELMA365 metadata через OpenAI.
+- **Инфраструктура (кратко):** образ backend собирается в CI и пушится в Yandex Container Registry; Terraform разворачивает Serverless Container, API Gateway, YDB Serverless и IAM binding; секреты приложения читаются из Lockbox; state Terraform хранится в Yandex Object Storage (S3 backend).
+- **Где деплой:** Yandex Cloud (`ru-central1`), публичная точка входа через API Gateway, проверка живости по `/health`.
+- **Как запускается CI/CD:** workflow `Deploy serverless backend` стартует на `push` в `main` или вручную (`workflow_dispatch`), затем build/push image -> `terraform init/apply` -> smoke test.
+- **Директории:** `apps/api` - API, `apps/web` - UI, `packages/*` - доменные/интеграционные модули, `terraform` - прод-инфра и деплой, `.github/workflows` - CI/CD.
+
 ## Scope
 - ELMA365 Public Web API only.
 - Metadata/context-level entities only (no app item business data in v1).
@@ -23,9 +30,11 @@ Product-ready prototype for ELMA365 metadata context chat with user-scoped acces
 1. Install pnpm.
 2. Install dependencies:
    - `pnpm install`
-3. Start API:
+3. Build workspace packages once:
+   - `pnpm -r build`
+4. Start API:
    - `pnpm dev`
-4. Start web UI:
+5. Start web UI:
    - `pnpm dev:web`
 
 ## Required API endpoints (implemented in skeleton)
