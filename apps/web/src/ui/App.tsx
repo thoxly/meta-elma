@@ -1,8 +1,9 @@
 import { useState } from "react";
 
+const ENV_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "");
 const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ||
-  "http://localhost:8080";
+  ENV_API_BASE_URL ||
+  (typeof window !== "undefined" && window.location.hostname !== "localhost" ? "/api" : "http://localhost:8080");
 
 type UserScopedContext = {
   fetchedAt: string;

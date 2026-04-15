@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://d5d15hm0bh8vn58mk622.z2ka767n.apigw.yandexcloud.net/:path*"
+    }
+  ]
+}
