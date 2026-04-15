@@ -177,6 +177,15 @@ app.get("/context/current/compact", async (req, reply) => {
   return buildCompactPromptContext(context);
 });
 
+app.get("/debug/context", async (req, reply) => {
+  const connectionId = String((req.query as Record<string, string>)?.connectionId ?? "");
+  const context = contexts.get(connectionId);
+  if (!context) {
+    return reply.code(404).send({ error: "No context found. Call /context/refresh first." });
+  }
+  return context;
+});
+
 app.post("/chat", async (req, reply) => {
   const schema = z.object({
     ownerUserId: z.string().min(1),
