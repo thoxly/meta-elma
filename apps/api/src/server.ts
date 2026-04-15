@@ -42,7 +42,10 @@ await app.register(cors, {
     }
 
     callback(new Error("Origin not allowed by CORS"), false);
-  }
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204
 });
 
 const connectionRepo = new InMemoryConnectionRepository();
@@ -100,6 +103,15 @@ app.addHook("onRequest", async (req) => {
 
 app.get("/health", async () => ({ status: "ok" }));
 app.get("/ready", async () => ({ status: "ready", checks: ["api"] }));
+
+app.options("/connections", async (_req, reply) => {
+  return reply
+    .code(204)
+    .header("Access-Control-Allow-Origin", "https://meta-elma-web.vercel.app")
+    .header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    .send();
+});
 
 app.post("/connections", async (req, reply) => {
   const schema = z.object({

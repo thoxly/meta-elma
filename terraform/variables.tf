@@ -32,8 +32,7 @@ variable "image_name" {
 }
 
 variable "image_tag" {
-  type    = string
-  default = "latest"
+  type = string
 }
 
 variable "container_name" {
