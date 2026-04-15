@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { buildCompactPromptContext } from "@meta-elma/context-engine";
@@ -18,6 +19,32 @@ import {
 } from "@meta-elma/storage";
 
 const app = Fastify({ logger: true });
+
+const allowedOrigins = new Set(
+  (process.env.CORS_ALLOWED_ORIGINS ??
+    "https://meta-elma-web.vercel.app,http://localhost:5173,http://localhost:3000")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+);
+
+await app.register(cors, {
+  origin(origin, callback) {
+    // Allow server-to-server calls and local tools that do not send Origin.
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (allowedOrigins.has(origin) || origin.endsWith(".vercel.app")) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error("Origin not allowed by CORS"), false);
+  }
+});
+
 const connectionRepo = new InMemoryConnectionRepository();
 const snapshotRepo = new InMemorySnapshotRepository();
 const llm = new OpenAIResponsesProvider();
@@ -148,6 +175,15 @@ app.get("/context/current/compact", async (req, reply) => {
     return reply.code(404).send({ error: "No context found. Call /context/refresh first." });
   }
   return buildCompactPromptContext(context);
+});
+
+app.get("/debug/context", async (req, reply) => {
+  const connectionId = String((req.query as Record<string, string>)?.connectionId ?? "");
+  const context = contexts.get(connectionId);
+  if (!context) {
+    return reply.code(404).send({ error: "No context found. Call /context/refresh first." });
+  }
+  return context;
 });
 
 app.post("/chat", async (req, reply) => {

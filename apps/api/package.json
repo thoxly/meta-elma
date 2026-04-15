@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@meta-elma/context-engine": "workspace:*",
     "@meta-elma/domain": "workspace:*",
     "@meta-elma/elma-adapter": "workspace:*",
