@@ -89,6 +89,12 @@ resource "yandex_api_gateway" "http" {
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
+        options:
+          operationId: connectionsOptions
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
       /context/refresh:
         post:
           operationId: contextRefresh
@@ -96,9 +102,42 @@ resource "yandex_api_gateway" "http" {
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
+        options:
+          operationId: contextRefreshOptions
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /context/current:
+        get:
+          operationId: contextCurrent
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /context/current/compact:
+        get:
+          operationId: contextCurrentCompact
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /debug/context:
+        get:
+          operationId: debugContext
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
       /chat:
         post:
           operationId: chat
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+        options:
+          operationId: chatOptions
           x-yc-apigateway-integration:
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
