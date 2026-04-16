@@ -102,8 +102,11 @@ export const api = {
   listConnections(accessToken: string) {
     return request<{ items: ConnectionState[] }>("/connections", {}, accessToken);
   },
-  createConnection(accessToken: string, input: { displayName: string; baseUrl: string }) {
+  createConnection(accessToken: string, input: { displayName: string; baseUrl: string; elmaToken: string }) {
     return request<{ connectionId: string }>("/connections", { method: "POST", body: JSON.stringify(input) }, accessToken);
+  },
+  deleteConnection(accessToken: string, connectionId: string) {
+    return request<{ ok: boolean }>(`/connections/${connectionId}`, { method: "DELETE" }, accessToken);
   },
   getConnectionState(accessToken: string, connectionId: string) {
     return request<ConnectionState>(`/connections/${connectionId}/state`, {}, accessToken);

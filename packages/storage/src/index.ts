@@ -65,6 +65,8 @@ function parsePayload<T>(rows: unknown[][] | unknown[][][]): T[] {
   });
 }
 
+type TableKey = keyof typeof TABLES;
+
 export class YdbStorage
   implements
     CompanyRepository,
@@ -206,6 +208,31 @@ export class YdbStorage
     `).values();
   }
 
+  private async deleteByPrimaryKey(table: TableKey, keyValues: string[]): Promise<void> {
+    const keyColumns: Record<TableKey, string[]> = {
+      companies: ["company_id"],
+      users: ["user_id"],
+      refreshSessions: ["session_id"],
+      connections: ["connection_id"],
+      credentials: ["credential_key"],
+      snapshots: ["connection_id"],
+      semanticMappings: ["connection_id"],
+      chatSessions: ["chat_session_id"],
+      chatMessages: ["chat_session_id", "chat_message_id"],
+      traces: ["trace_id"],
+      connectionJobs: ["job_id"]
+    };
+    const columns = keyColumns[table];
+    if (columns.length !== keyValues.length) {
+      throw new Error(`Primary key mismatch for ${table}`);
+    }
+    const where = columns.map((column, index) => `${column} = ${this.literal(keyValues[index])}`).join(" AND ");
+    await this.sql(`
+      DELETE FROM ${TABLES[table]}
+      WHERE ${where};
+    `);
+  }
+
   async close(): Promise<void> {
     await this.driver.close();
   }
@@ -302,6 +329,46 @@ export class YdbStorage
     await this.ensureReady();
     const rows = await this.selectAllPayload(TABLES.connections);
     return parsePayload<Connection>(rows).find((item) => item.connectionId === connectionId) ?? null;
+  }
+
+  async deleteConnectionLifecycle(connectionId: EntityId): Promise<void> {
+    await this.ensureReady();
+
+    const credentials = parsePayload<UserConnectionCredential>(await this.selectAllPayload(TABLES.credentials)).filter(
+      (item) => item.connectionId === connectionId
+    );
+    for (const credential of credentials) {
+      await this.deleteByPrimaryKey("credentials", [toKey(credential.userId, credential.connectionId)]);
+    }
+
+    const jobs = parsePayload<ConnectionJob>(await this.selectAllPayload(TABLES.connectionJobs)).filter(
+      (item) => item.connectionId === connectionId
+    );
+    for (const job of jobs) {
+      await this.deleteByPrimaryKey("connectionJobs", [job.jobId]);
+    }
+
+    const sessions = parsePayload<ChatSession>(await this.selectAllPayload(TABLES.chatSessions)).filter(
+      (item) => item.connectionId === connectionId
+    );
+    for (const session of sessions) {
+      const sessionMessages = parsePayload<ChatMessage>(await this.selectAllPayload(TABLES.chatMessages)).filter(
+        (item) => item.chatSessionId === session.chatSessionId
+      );
+      for (const message of sessionMessages) {
+        await this.deleteByPrimaryKey("chatMessages", [message.chatSessionId, message.chatMessageId]);
+      }
+      await this.deleteByPrimaryKey("chatSessions", [session.chatSessionId]);
+    }
+
+    const traces = parsePayload<Trace>(await this.selectAllPayload(TABLES.traces)).filter((item) => item.connectionId === connectionId);
+    for (const trace of traces) {
+      await this.deleteByPrimaryKey("traces", [trace.traceId]);
+    }
+
+    await this.deleteByPrimaryKey("semanticMappings", [connectionId]);
+    await this.deleteByPrimaryKey("snapshots", [connectionId]);
+    await this.deleteByPrimaryKey("connections", [connectionId]);
   }
 
   async upsert(credential: UserConnectionCredential): Promise<void> {

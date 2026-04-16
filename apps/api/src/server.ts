@@ -278,8 +278,12 @@ app.post("/auth/login", async (request, reply) => {
 app.post("/connections", async (request, reply) => {
   const auth = await requireAuth(request as never, reply as never);
   if (!auth) return;
-  const body = z.object({ displayName: z.string().min(1), baseUrl: z.string().url() }).parse(request.body);
+  const body = z.object({ displayName: z.string().min(1), baseUrl: z.string().url(), elmaToken: z.string().min(1) }).parse(request.body);
   const normalizedBaseUrl = normalizeElmaBaseUrl(body.baseUrl);
+  const validation = await elma.validateCredential(normalizedBaseUrl, body.elmaToken);
+  if (!validation.ok) {
+    return reply.code(400).send({ error: "ELMA URL or token is invalid" });
+  }
   const connection = {
     connectionId: crypto.randomUUID(),
     companyId: auth.companyId,
@@ -291,7 +295,32 @@ app.post("/connections", async (request, reply) => {
     updatedAt: now()
   };
   await storage.createConnection(connection);
+  await storage.upsert({
+    credentialId: crypto.randomUUID(),
+    companyId: auth.companyId,
+    connectionId: connection.connectionId,
+    userId: auth.userId,
+    encryptedElmaToken: cryptoBox.encrypt(body.elmaToken),
+    encryptedLlmToken: null,
+    encryptionVersion: cryptoBox.version(),
+    isValid: true,
+    invalidReason: undefined,
+    lastValidatedAt: now(),
+    lastValidationError: undefined,
+    createdAt: now(),
+    updatedAt: now()
+  });
   return reply.code(201).send(connection);
+});
+
+app.delete("/connections/:id", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const connection = await storage.getConnectionById(id);
+  if (!connection || connection.companyId !== auth.companyId) return reply.code(404).send({ error: "Connection not found" });
+  await storage.deleteConnectionLifecycle(id);
+  return { ok: true };
 });
 
 app.get("/connections", async (request, reply) => {

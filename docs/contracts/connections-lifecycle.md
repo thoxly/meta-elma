@@ -37,8 +37,10 @@ This document defines the current public contract for `Connections` lifecycle in
 
 ELMA (required):
 
+- `POST /connections` with `displayName`, `baseUrl`, `elmaToken` (creates connection and validates URL/token immediately)
 - `PUT /connections/:id/elma-credentials`
 - `POST /connections/:id/elma-credentials/validate`
+- `DELETE /connections/:id` (deletes connection and lifecycle data)
 
 LLM (optional):
 

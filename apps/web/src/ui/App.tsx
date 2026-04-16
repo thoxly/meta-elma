@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { CircleAlert, CircleCheck, Database, Link2, LoaderCircle, LogOut, MessageSquare, Search, Workflow } from "lucide-react";
+import { CircleAlert, CircleCheck, Database, Link2, LoaderCircle, LogOut, MessageSquare, Search, Trash2, Workflow } from "lucide-react";
 import { api, type ConnectionState } from "../api";
 import { useAuth } from "../auth";
 
@@ -199,11 +199,17 @@ function ConnectionsPage() {
     if (!auth) return;
     setError("");
     setLoadingAction("create");
-    const created = await api.createConnection(auth.tokens.accessToken, { displayName, baseUrl });
-    setSelectedConnectionId(created.connectionId);
-    setMessage("Connection created");
-    setLoadingAction("");
-    await load();
+    try {
+      const created = await api.createConnection(auth.tokens.accessToken, { displayName, baseUrl, elmaToken: elmaToken.trim() });
+      setSelectedConnectionId(created.connectionId);
+      setMessage("Connection created and ELMA access verified");
+      setElmaToken("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create connection");
+    } finally {
+      setLoadingAction("");
+    }
   }
 
   async function saveElmaCredentials() {
@@ -233,6 +239,25 @@ function ConnectionsPage() {
     }
     setLoadingAction("");
     await load();
+  }
+
+  async function deleteConnection() {
+    if (!auth || !selectedConnectionId) return;
+    const confirmed = window.confirm("Delete this connection and all lifecycle data (credentials, jobs, snapshots, semantic, chat history)?");
+    if (!confirmed) return;
+    setError("");
+    setLoadingAction("delete_connection");
+    try {
+      await api.deleteConnection(auth.tokens.accessToken, selectedConnectionId);
+      setMessage("Connection deleted");
+      const deletedId = selectedConnectionId;
+      await load();
+      setSelectedConnectionId((current) => (current === deletedId ? "" : current));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete connection");
+    } finally {
+      setLoadingAction("");
+    }
   }
 
   async function saveLlmToken() {
@@ -288,13 +313,14 @@ function ConnectionsPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <Panel title="Create ELMA connection" description="Create shared instance entry first, then configure your personal credentials.">
+        <Panel title="Create ELMA connection" description="Add URL + ELMA token and verify access immediately during creation.">
           <div className="grid gap-3">
             <input className="field" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Connection name" />
             <input className="field" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-elma-domain.ru/" />
+            <input className="field" value={elmaToken} onChange={(e) => setElmaToken(e.target.value)} placeholder="ELMA token (required)" />
             <p className="text-xs text-muted">Base URL accepts standard `*.elma365.ru` and custom ELMA domains.</p>
             <div>
-              <button className="btn-primary" onClick={createConnection} disabled={loadingAction === "create"}>
+              <button className="btn-primary" onClick={createConnection} disabled={loadingAction === "create" || !elmaToken.trim()}>
                 Create connection
               </button>
             </div>
@@ -324,11 +350,17 @@ function ConnectionsPage() {
               })}
             </div>
           )}
+          <div className="mt-3">
+            <button className="btn-secondary gap-2 text-danger" onClick={deleteConnection} disabled={!selectedConnectionId || loadingAction === "delete_connection"}>
+              <Trash2 className="size-4" />
+              Delete selected connection
+            </button>
+          </div>
         </Panel>
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_1fr]">
-        <Panel title="ELMA connection" description="Required: ELMA token is mandatory to validate access and sync schema.">
+        <Panel title="ELMA connection" description="Use this if you need to rotate token for an existing connection.">
           <div className="grid gap-3">
             <input className="field" value={elmaToken} onChange={(e) => setElmaToken(e.target.value)} placeholder="ELMA token (required)" />
             <div>
