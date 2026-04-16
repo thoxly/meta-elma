@@ -9,6 +9,9 @@ import type {
   Company,
   CompanyRepository,
   Connection,
+  ConnectionJob,
+  ConnectionJobRepository,
+  ConnectionJobType,
   ConnectionRepository,
   CredentialRepository,
   EntityId,
@@ -35,7 +38,8 @@ const TABLES = {
   semanticMappings: "`semantic_mappings`",
   chatSessions: "`chat_sessions`",
   chatMessages: "`chat_messages`",
-  traces: "`traces`"
+  traces: "`traces`",
+  connectionJobs: "`connection_jobs`"
 } as const;
 
 function toKey(userId: string, connectionId: string): string {
@@ -71,7 +75,8 @@ export class YdbStorage
     SnapshotRepository,
     SemanticMappingRepository,
     ChatRepository,
-    TraceRepository
+    TraceRepository,
+    ConnectionJobRepository
 {
   private readonly driver: Driver;
   private readonly sql: QueryClient;
@@ -167,6 +172,14 @@ export class YdbStorage
         company_id Utf8,
         data_json Utf8,
         PRIMARY KEY (trace_id)
+      )
+    `);
+    await this.sql(`
+      CREATE TABLE IF NOT EXISTS ${TABLES.connectionJobs} (
+        job_id Utf8,
+        connection_id Utf8,
+        data_json Utf8,
+        PRIMARY KEY (job_id)
       )
     `);
   }
@@ -404,5 +417,40 @@ export class YdbStorage
     await this.ensureReady();
     const rows = await this.selectAllPayload(TABLES.traces);
     return parsePayload<Trace>(rows).find((trace) => trace.traceId === traceId) ?? null;
+  }
+
+  async createJob(job: ConnectionJob): Promise<void> {
+    await this.ensureReady();
+    await this.sql(`
+      UPSERT INTO ${TABLES.connectionJobs} (job_id, connection_id, data_json)
+      VALUES (
+        ${this.literal(job.jobId)},
+        ${this.literal(job.connectionId)},
+        ${this.literal(JSON.stringify(job))}
+      );
+    `);
+  }
+
+  async updateJob(job: ConnectionJob): Promise<void> {
+    await this.createJob(job);
+  }
+
+  async getJobById(jobId: EntityId): Promise<ConnectionJob | null> {
+    await this.ensureReady();
+    const rows = await this.selectAllPayload(TABLES.connectionJobs);
+    return parsePayload<ConnectionJob>(rows).find((job) => job.jobId === jobId) ?? null;
+  }
+
+  async listJobsForConnection(connectionId: EntityId): Promise<ConnectionJob[]> {
+    await this.ensureReady();
+    const rows = await this.selectAllPayload(TABLES.connectionJobs);
+    return parsePayload<ConnectionJob>(rows)
+      .filter((job) => job.connectionId === connectionId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async listRunningJobs(connectionId: EntityId, type: ConnectionJobType): Promise<ConnectionJob[]> {
+    const jobs = await this.listJobsForConnection(connectionId);
+    return jobs.filter((job) => job.type === type && (job.status === "queued" || job.status === "running"));
   }
 }

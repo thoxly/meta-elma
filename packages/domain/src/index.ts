@@ -50,6 +50,67 @@ export interface UserConnectionCredential {
   encryptionVersion: string;
   isValid: boolean;
   invalidReason?: string;
+  lastValidatedAt?: IsoTimestamp;
+  lastValidationError?: string;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+}
+
+export type ConnectionLifecycleStatus =
+  | "requires_elma_token"
+  | "elma_invalid"
+  | "schema_missing"
+  | "schema_syncing"
+  | "llm_missing"
+  | "semantic_missing"
+  | "semantic_generating"
+  | "ready_for_chat"
+  | "requires_action";
+
+export interface ConnectionCapabilities {
+  canSaveElmaToken: boolean;
+  canRefreshSchema: boolean;
+  canSaveLlmToken: boolean;
+  canGenerateSemantic: boolean;
+  canChat: boolean;
+}
+
+export interface ConnectionLatestState {
+  snapshotVersion: number | null;
+  snapshotUpdatedAt: IsoTimestamp | null;
+  semanticVersion: number | null;
+  semanticUpdatedAt: IsoTimestamp | null;
+  semanticSnapshotId: EntityId | null;
+}
+
+export interface ConnectionState {
+  connection: Connection;
+  status: ConnectionLifecycleStatus;
+  nextActions: string[];
+  health: {
+    hasElmaToken: boolean;
+    hasLlmToken: boolean;
+    credentialsValid: boolean;
+    snapshotReady: boolean;
+    semanticReady: boolean;
+    semanticMatchesSnapshot: boolean;
+  };
+  capabilities: ConnectionCapabilities;
+  latest: ConnectionLatestState;
+}
+
+export type ConnectionJobType = "refresh_schema" | "generate_semantic";
+export type ConnectionJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
+
+export interface ConnectionJob {
+  jobId: EntityId;
+  companyId: EntityId;
+  connectionId: EntityId;
+  userId: EntityId;
+  type: ConnectionJobType;
+  status: ConnectionJobStatus;
+  error: string | null;
+  result: Record<string, unknown> | null;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 }
@@ -298,4 +359,12 @@ export interface ChatRepository {
 export interface TraceRepository {
   saveTrace(trace: Trace): Promise<void>;
   getTraceById(traceId: EntityId): Promise<Trace | null>;
+}
+
+export interface ConnectionJobRepository {
+  createJob(job: ConnectionJob): Promise<void>;
+  updateJob(job: ConnectionJob): Promise<void>;
+  getJobById(jobId: EntityId): Promise<ConnectionJob | null>;
+  listJobsForConnection(connectionId: EntityId): Promise<ConnectionJob[]>;
+  listRunningJobs(connectionId: EntityId, type: ConnectionJobType): Promise<ConnectionJob[]>;
 }
