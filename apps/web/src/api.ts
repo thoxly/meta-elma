@@ -5,9 +5,14 @@ export type LoginResponse = {
 };
 
 const ENV_API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
 const API_URL =
   ENV_API_URL ||
-  (typeof window !== "undefined" && window.location.hostname !== "localhost" ? "/api" : "http://localhost:8080");
+  (typeof window !== "undefined" && isLocalHost(window.location.hostname) ? "http://localhost:8080" : "/api");
 
 async function request<T>(path: string, options: RequestInit = {}, accessToken?: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -18,10 +23,24 @@ async function request<T>(path: string, options: RequestInit = {}, accessToken?:
       ...(options.headers ?? {})
     }
   });
-  const payload = await response.json();
+  const contentType = response.headers.get("content-type") ?? "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+  const payload: unknown = isJson ? await response.json() : await response.text();
+
   if (!response.ok) {
-    throw new Error(String(payload?.error ?? "Request failed"));
+    const errorMessage =
+      typeof payload === "object" && payload !== null && "error" in payload
+        ? String((payload as { error?: unknown }).error ?? "Request failed")
+        : typeof payload === "string" && payload.trim().length > 0
+          ? payload
+          : "Request failed";
+    throw new Error(errorMessage);
   }
+
+  if (!isJson) {
+    throw new Error(`Expected JSON response for ${path}, received ${contentType || "unknown content type"}`);
+  }
+
   return payload as T;
 }
 
