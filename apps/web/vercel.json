@@ -1,6 +1,26 @@
 {
   "rewrites": [
     {
+      "source": "/auth/:path*",
+      "destination": "https://d5d15hm0bh8vn58mk622.z2ka767n.apigw.yandexcloud.net/auth/:path*"
+    },
+    {
+      "source": "/connections/:path*",
+      "destination": "https://d5d15hm0bh8vn58mk622.z2ka767n.apigw.yandexcloud.net/connections/:path*"
+    },
+    {
+      "source": "/jobs/:path*",
+      "destination": "https://d5d15hm0bh8vn58mk622.z2ka767n.apigw.yandexcloud.net/jobs/:path*"
+    },
+    {
+      "source": "/chat/:path*",
+      "destination": "https://d5d15hm0bh8vn58mk622.z2ka767n.apigw.yandexcloud.net/chat/:path*"
+    },
+    {
+      "source": "/traces/:path*",
+      "destination": "https://d5d15hm0bh8vn58mk622.z2ka767n.apigw.yandexcloud.net/traces/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://d5d15hm0bh8vn58mk622.z2ka767n.apigw.yandexcloud.net/:path*"
     },
