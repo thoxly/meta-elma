@@ -75,7 +75,6 @@ B2B multi-tenant read-only AI assistant for ELMA365.
 
 ## Notes
 
-- `infra/` is legacy baseline and not used by active deploy workflow.
 - Deployment instructions are in `docs/deploy.md`.
 - Architecture decision notes are in `docs/adr`.
 - Storage layer now persists to YDB tables and initializes schema on API startup.

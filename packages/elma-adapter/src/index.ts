@@ -19,6 +19,7 @@ export interface ElmaClientConfig {
 }
 
 type RawElmaEntity = Record<string, unknown>;
+const ELMA_SCHEMA_DEBUG = process.env.ELMA_SCHEMA_DEBUG === "1";
 
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -84,6 +85,12 @@ function collectMeta(input: Record<string, unknown>): Record<string, unknown> | 
   return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
+function debugSchemaLog(message: string, payload: Record<string, unknown>): void {
+  if (!ELMA_SCHEMA_DEBUG) return;
+  // Minimal diagnostics only: no tokens/body dumps, only shape/counts.
+  console.info(`[elma-schema-debug] ${message}`, payload);
+}
+
 export class HttpElmaClient implements ElmaConnector {
   private readonly defaultBaseUrl: string;
   private readonly timeoutMs: number;
@@ -114,6 +121,18 @@ export class HttpElmaClient implements ElmaConnector {
         });
         clearTimeout(timeout);
         const payload = await parseJsonOrText(response);
+        if (path.startsWith("/pub/v1/scheme/")) {
+          const payloadObject = parseObject(payload);
+          const collection = parseCollection(payload);
+          const firstItem = collection[0];
+          debugSchemaLog("scheme response", {
+            path,
+            status: response.status,
+            topLevelKeys: Object.keys(payloadObject),
+            collectionLength: collection.length,
+            firstItemKeys: firstItem ? Object.keys(firstItem) : []
+          });
+        }
         if (!response.ok) {
           throw new ElmaApiError(`ELMA API request failed: ${path}`, response.status, payload);
         }
@@ -345,6 +364,17 @@ export class HttpElmaClient implements ElmaConnector {
     });
     const fieldsCount = apps.reduce((sum, app) => sum + app.fields.length, 0);
     const statusEnabledApps = apps.filter((app) => app.statuses && "statusItems" in app.statuses).length;
+    debugSchemaLog("snapshot build complete", {
+      baseUrl,
+      namespaces: namespaceViews.length,
+      apps: apps.length,
+      pages: pages.length,
+      processes: processes.length,
+      groups: groups.length,
+      fields: fieldsCount,
+      statusEnabledApps,
+      relationHints: relationHints.length
+    });
     return {
       baseUrl,
       collectedAt: new Date().toISOString(),

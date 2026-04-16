@@ -55,6 +55,18 @@ async function runConnectionJob(input: {
         throw new Error("Valid ELMA credential is required");
       }
       const payload = await elma.collectStructuralSnapshot(connection.baseUrl, cryptoBox.decrypt(credential.encryptedElmaToken));
+      app.log.info({
+        msg: "refresh_schema snapshot collected",
+        connectionId: connection.connectionId,
+        baseUrl: connection.baseUrl,
+        namespaces: payload.stats?.namespaces ?? payload.namespaces.length,
+        apps: payload.stats?.apps ?? payload.apps.length,
+        pages: payload.stats?.pages ?? payload.pages.length,
+        processes: payload.stats?.processes ?? payload.processes.length,
+        groups: payload.stats?.groups ?? payload.groups.length,
+        fields: payload.stats?.fields ?? payload.apps.reduce((sum, item) => sum + item.fields.length, 0),
+        relationHints: payload.stats?.relationHints ?? payload.relationHints.length
+      });
       const current = await storage.getCurrentSnapshotForConnection(connection.connectionId);
       const snapshot = {
         snapshotId: crypto.randomUUID(),

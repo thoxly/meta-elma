@@ -4,7 +4,6 @@
 - Active infra: `terraform/`
 - Active pipeline: `.github/workflows/deploy.yml`
 - Legacy duplicate workflow removed: `deploy-serverless.yml`
-- `infra/` directory is legacy baseline only.
 
 ## What deploy pipeline does
 1. Build backend container from `docker/Dockerfile`.
