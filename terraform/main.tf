@@ -37,6 +37,7 @@ resource "yandex_serverless_container" "backend" {
       YDB_ENDPOINT   = yandex_ydb_database_serverless.app.ydb_api_endpoint
       YDB_DATABASE   = yandex_ydb_database_serverless.app.database_path
       STORAGE_BUCKET = var.bucket_name
+      APP_IMAGE_TAG  = var.image_tag
     }
   }
 
