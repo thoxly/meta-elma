@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import type { AuthContext, AuthTokens, CredentialCrypto, PasswordHasher, TokenService } from "@meta-elma/domain";
+import type { AuthContext, AuthTokens, CredentialCrypto, PasswordHasher, RefreshTokenPayload, TokenService } from "@meta-elma/domain";
 
 export class BcryptPasswordHasher implements PasswordHasher {
   async hash(password: string): Promise<string> {
@@ -21,9 +21,10 @@ export class JwtTokenService implements TokenService {
     private readonly refreshTtlSeconds = 30 * 24 * 60 * 60
   ) {}
 
-  createTokens(input: { userId: string; companyId: string; email: string }): AuthTokens {
-    const accessToken = jwt.sign(input, this.accessSecret, { expiresIn: this.accessTtlSeconds });
-    const refreshToken = jwt.sign({ ...input, type: "refresh" }, this.refreshSecret, {
+  createTokens(input: { userId: string; companyId: string; email: string; sessionId: string }): AuthTokens {
+    const { sessionId, ...authContext } = input;
+    const accessToken = jwt.sign(authContext, this.accessSecret, { expiresIn: this.accessTtlSeconds });
+    const refreshToken = jwt.sign({ ...authContext, sessionId, type: "refresh" }, this.refreshSecret, {
       expiresIn: this.refreshTtlSeconds
     });
     return { accessToken, refreshToken };
@@ -31,6 +32,14 @@ export class JwtTokenService implements TokenService {
 
   verifyAccessToken(accessToken: string): AuthContext {
     const payload = jwt.verify(accessToken, this.accessSecret) as AuthContext;
+    return payload;
+  }
+
+  verifyRefreshToken(refreshToken: string): RefreshTokenPayload {
+    const payload = jwt.verify(refreshToken, this.refreshSecret) as RefreshTokenPayload;
+    if (payload.type !== "refresh" || !payload.sessionId) {
+      throw new Error("Invalid refresh token payload");
+    }
     return payload;
   }
 

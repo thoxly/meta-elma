@@ -248,6 +248,11 @@ export interface AuthContext {
   email: string;
 }
 
+export interface RefreshTokenPayload extends AuthContext {
+  sessionId: EntityId;
+  type: "refresh";
+}
+
 export interface LiveRecord {
   entity: string;
   id: string;
@@ -280,8 +285,9 @@ export interface PasswordHasher {
 }
 
 export interface TokenService {
-  createTokens(input: { userId: EntityId; companyId: EntityId; email: string }): AuthTokens;
+  createTokens(input: { userId: EntityId; companyId: EntityId; email: string; sessionId: EntityId }): AuthTokens;
   verifyAccessToken(accessToken: string): AuthContext;
+  verifyRefreshToken(refreshToken: string): RefreshTokenPayload;
   hashRefreshToken(refreshToken: string): string;
 }
 
