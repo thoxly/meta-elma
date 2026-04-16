@@ -66,24 +66,6 @@ resource "yandex_serverless_container_iam_binding" "gateway_invoker" {
   ]
 }
 
-resource "yandex_container_registry_iam_binding" "runtime_image_puller" {
-  registry_id = var.registry_id
-  role        = "container-registry.images.puller"
-
-  members = [
-    "serviceAccount:${var.runtime_sa_id}"
-  ]
-}
-
-resource "yandex_lockbox_secret_iam_binding" "runtime_secret_reader" {
-  secret_id = var.lockbox_secret_id
-  role      = "lockbox.payloadViewer"
-
-  members = [
-    "serviceAccount:${var.runtime_sa_id}"
-  ]
-}
-
 resource "yandex_api_gateway" "http" {
   name      = var.api_gateway_name
   folder_id = var.folder_id
