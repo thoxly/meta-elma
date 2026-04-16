@@ -50,13 +50,13 @@ async function runConnectionJob(input: {
   await storage.updateJob({ ...job, status: "running", updatedAt: startedAt });
   try {
     if (job.type === "refresh_schema") {
+      console.info(`[refresh-schema] started connectionId=${connection.connectionId} baseUrl=${connection.baseUrl}`);
       const credential = await storage.getForUserAndConnection(auth.userId, connection.connectionId);
       if (!credential?.isValid) {
         throw new Error("Valid ELMA credential is required");
       }
       const payload = await elma.collectStructuralSnapshot(connection.baseUrl, cryptoBox.decrypt(credential.encryptedElmaToken));
-      app.log.info({
-        msg: "refresh_schema snapshot collected",
+      const snapshotStats = {
         connectionId: connection.connectionId,
         baseUrl: connection.baseUrl,
         namespaces: payload.stats?.namespaces ?? payload.namespaces.length,
@@ -66,6 +66,12 @@ async function runConnectionJob(input: {
         groups: payload.stats?.groups ?? payload.groups.length,
         fields: payload.stats?.fields ?? payload.apps.reduce((sum, item) => sum + item.fields.length, 0),
         relationHints: payload.stats?.relationHints ?? payload.relationHints.length
+      };
+      // Keep a plain-text marker in stdout so it is easy to find in YC Logging UI/CLI.
+      console.info(`refresh_schema snapshot collected ${JSON.stringify(snapshotStats)}`);
+      app.log.info({
+        msg: "refresh_schema snapshot collected",
+        ...snapshotStats
       });
       const current = await storage.getCurrentSnapshotForConnection(connection.connectionId);
       const snapshot = {
@@ -127,6 +133,13 @@ async function runConnectionJob(input: {
       return;
     }
   } catch (error) {
+    if (job.type === "refresh_schema") {
+      console.error(
+        `[refresh-schema] failed connectionId=${connection.connectionId} reason=${
+          error instanceof Error ? error.message : "unknown"
+        }`
+      );
+    }
     await storage.updateJob({
       ...job,
       status: "failed",
