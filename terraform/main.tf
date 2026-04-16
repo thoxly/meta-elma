@@ -167,6 +167,19 @@ resource "yandex_api_gateway" "http" {
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/schema:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
+        get:
+          operationId: getConnectionSchema
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
       /connections/{id}/elma-credentials:
         parameters:
           - name: id
