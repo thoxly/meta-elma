@@ -104,14 +104,109 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections:
+        get:
+          operationId: listConnections
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
         post:
-          operationId: connections
+          operationId: createConnection
           x-yc-apigateway-integration:
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
         options:
           operationId: connectionsOptions
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/state:
+        get:
+          operationId: getConnectionState
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/elma-credentials:
+        put:
+          operationId: saveElmaCredentials
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/elma-credentials/validate:
+        post:
+          operationId: validateElmaCredentials
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/llm-settings:
+        put:
+          operationId: saveLlmSettings
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/llm-settings/validate:
+        post:
+          operationId: validateLlmSettings
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/jobs:
+        get:
+          operationId: listConnectionJobs
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+        post:
+          operationId: createConnectionJob
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}/semantic:
+        get:
+          operationId: getConnectionSemantic
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+        put:
+          operationId: saveConnectionSemantic
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /jobs/{jobId}:
+        get:
+          operationId: getJob
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /chat/sessions:
+        get:
+          operationId: listChatSessions
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /chat/sessions/{id}:
+        get:
+          operationId: getChatSession
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /traces/{id}:
+        get:
+          operationId: getTrace
           x-yc-apigateway-integration:
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
