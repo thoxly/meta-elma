@@ -3,6 +3,18 @@ export type LoginResponse = {
   tokens: Tokens;
   user: { userId: string; companyId: string; email: string; fullName: string };
 };
+
+let apiAuthState: LoginResponse | null = null;
+let apiAuthStateChangedListener: ((auth: LoginResponse | null) => void) | null = null;
+
+export function setApiAuthState(auth: LoginResponse | null): void {
+  apiAuthState = auth;
+  apiAuthStateChangedListener?.(auth);
+}
+
+export function setApiAuthStateChangedListener(listener: ((auth: LoginResponse | null) => void) | null): void {
+  apiAuthStateChangedListener = listener;
+}
 export type ConnectionLifecycleStatus =
   | "requires_elma_token"
   | "elma_invalid"
@@ -71,11 +83,12 @@ const API_URL =
 
 async function request<T>(path: string, options: RequestInit = {}, accessToken?: string): Promise<T> {
   const hasBody = options.body !== undefined && options.body !== null;
+  const resolvedAccessToken = accessToken ?? apiAuthState?.tokens.accessToken;
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(resolvedAccessToken ? { Authorization: `Bearer ${resolvedAccessToken}` } : {}),
       ...(options.headers ?? {})
     }
   });

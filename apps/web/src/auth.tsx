@@ -37,7 +37,7 @@ export function AuthProvider(props: { children: React.ReactNode }) {
   }, [auth]);
 
   useEffect(() => {
-    setApiAuthStateChangedListener((next) => setAuth(next));
+    setApiAuthStateChangedListener((next: LoginResponse | null) => setAuth(next));
     return () => setApiAuthStateChangedListener(null);
   }, []);
 
