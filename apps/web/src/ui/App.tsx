@@ -269,16 +269,16 @@ function ConnectionsPage() {
     await load();
   }
 
-  async function deleteConnection() {
-    if (!auth || !selectedConnectionId) return;
+  async function deleteConnection(connectionId = selectedConnectionId) {
+    if (!auth || !connectionId) return;
     const confirmed = window.confirm("Delete this connection and all lifecycle data (credentials, jobs, snapshots, semantic, chat history)?");
     if (!confirmed) return;
     setError("");
     setLoadingAction("delete_connection");
     try {
-      await api.deleteConnection(auth.tokens.accessToken, selectedConnectionId);
+      await api.deleteConnection(auth.tokens.accessToken, connectionId);
       setMessage("Connection deleted");
-      const deletedId = selectedConnectionId;
+      const deletedId = connectionId;
       await load();
       setSelectedConnectionId((current) => (current === deletedId ? "" : current));
     } catch (err) {
@@ -363,27 +363,42 @@ function ConnectionsPage() {
               {items.map((item) => {
                 const isSelected = selectedConnectionId === item.connection.connectionId;
                 return (
-                  <button
+                  <div
                     key={item.connection.connectionId}
-                    onClick={() => setSelectedConnectionId(item.connection.connectionId)}
-                    className={`focus-ring rounded-lg border px-3 py-2 text-left transition ${
+                    className={`focus-ring rounded-lg border px-3 py-2 transition ${
                       isSelected ? "border-accent bg-accent-soft" : "hover:bg-slate-50"
                     }`}
                   >
-                    <p className="text-sm font-medium">{item.connection.displayName}</p>
-                    <p className="text-xs text-muted">{item.connection.baseUrl}</p>
-                    <p className="mt-1 text-xs text-accent">{statusLabel(item.status)}</p>
-                  </button>
+                    <button
+                      onClick={() => setSelectedConnectionId(item.connection.connectionId)}
+                      className="w-full text-left"
+                    >
+                      <p className="text-sm font-medium">{item.connection.displayName}</p>
+                      <p className="text-xs text-muted">{item.connection.baseUrl}</p>
+                      <p className="mt-1 text-xs text-accent">{statusLabel(item.status)}</p>
+                    </button>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        className="btn-secondary gap-2 text-xs"
+                        onClick={() => navigate(`/app/connections/${item.connection.connectionId}/semantic`)}
+                      >
+                        <Link2 className="size-3.5" />
+                        Open semantic
+                      </button>
+                      <button
+                        className="btn-secondary gap-2 text-xs text-danger"
+                        onClick={() => void deleteConnection(item.connection.connectionId)}
+                        disabled={loadingAction === "delete_connection"}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           )}
-          <div className="mt-3">
-            <button className="btn-secondary gap-2 text-danger" onClick={deleteConnection} disabled={!selectedConnectionId || loadingAction === "delete_connection"}>
-              <Trash2 className="size-4" />
-              Delete selected connection
-            </button>
-          </div>
         </Panel>
       </div>
 
@@ -435,9 +450,6 @@ function ConnectionsPage() {
                 Generate semantic
               </button>
             </div>
-            <button className="btn-secondary" onClick={() => selectedConnectionId && navigate(`/app/connections/${selectedConnectionId}/semantic`)} disabled={!selectedConnectionId}>
-              Open semantic editor
-            </button>
             <p className={`text-xs ${selected?.capabilities.canChat ? "text-success" : "text-muted"}`}>
               {selected?.capabilities.canChat ? "Chat ready for this connection" : "Complete ELMA + schema + LLM + semantic to unlock chat"}
             </p>

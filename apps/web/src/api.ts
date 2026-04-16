@@ -63,10 +63,11 @@ const API_URL =
   (typeof window !== "undefined" && isLocalHost(window.location.hostname) ? "http://localhost:8080" : "/api");
 
 async function request<T>(path: string, options: RequestInit = {}, accessToken?: string): Promise<T> {
+  const hasBody = options.body !== undefined && options.body !== null;
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(options.headers ?? {})
     }
