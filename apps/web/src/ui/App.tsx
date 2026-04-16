@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { CircleCheck, Database, Link2, LogOut, MessageSquare, Search, Workflow } from "lucide-react";
-import { api } from "../api";
+import { CircleAlert, CircleCheck, Database, Link2, LoaderCircle, LogOut, MessageSquare, Search, Workflow } from "lucide-react";
+import { api, type ConnectionState } from "../api";
 import { useAuth } from "../auth";
-
-type Connection = { connectionId: string; displayName: string; baseUrl: string };
 
 function PageHeader(props: { title: string; description: string; action?: React.ReactNode }) {
   return (
@@ -145,55 +143,130 @@ function AppLayout() {
 
 function ConnectionsPage() {
   const { auth } = useAuth();
-  const [items, setItems] = useState<Array<Connection>>([]);
-  const [displayName, setDisplayName] = useState("Primary ELMA");
-  const [baseUrl, setBaseUrl] = useState("https://api.elma365.com");
+  const [items, setItems] = useState<ConnectionState[]>([]);
+  const [displayName, setDisplayName] = useState("ELMA Production");
+  const [baseUrl, setBaseUrl] = useState("https://example.elma365.ru/");
   const [elmaToken, setElmaToken] = useState("");
   const [llmToken, setLlmToken] = useState("");
   const [selectedConnectionId, setSelectedConnectionId] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loadingAction, setLoadingAction] = useState("");
+  const [activeJobId, setActiveJobId] = useState("");
   const navigate = useNavigate();
+
+  const selected = useMemo(
+    () => items.find((item) => item.connection.connectionId === selectedConnectionId) ?? null,
+    [items, selectedConnectionId]
+  );
+
+  function statusLabel(status: ConnectionState["status"]): string {
+    const labels: Record<ConnectionState["status"], string> = {
+      requires_elma_token: "Needs ELMA token",
+      elma_invalid: "ELMA token invalid",
+      schema_missing: "Schema not loaded",
+      schema_syncing: "Schema syncing",
+      llm_missing: "LLM not configured",
+      semantic_missing: "Semantic not generated",
+      semantic_generating: "Semantic generating",
+      ready_for_chat: "Ready for chat",
+      requires_action: "Requires action"
+    };
+    return labels[status];
+  }
 
   async function load() {
     if (!auth) return;
     const response = await api.listConnections(auth.tokens.accessToken);
     setItems(response.items);
+    if (!selectedConnectionId && response.items[0]) {
+      setSelectedConnectionId(response.items[0].connection.connectionId);
+    }
   }
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [auth]);
 
   async function createConnection() {
     if (!auth) return;
+    setError("");
+    setLoadingAction("create");
     const created = await api.createConnection(auth.tokens.accessToken, { displayName, baseUrl });
     setSelectedConnectionId(created.connectionId);
+    setMessage("Connection created");
+    setLoadingAction("");
     await load();
   }
 
-  async function saveCredentials() {
+  async function saveElmaCredentials() {
     if (!auth || !selectedConnectionId) return;
-    await api.upsertCredentials(auth.tokens.accessToken, selectedConnectionId, { elmaToken, llmToken });
-    setMessage("Credentials saved");
+    setError("");
+    setLoadingAction("save_elma");
+    await api.saveElmaCredentials(auth.tokens.accessToken, selectedConnectionId, { elmaToken });
+    setMessage("ELMA token saved");
+    setLoadingAction("");
+    await load();
   }
 
-  async function refreshSnapshot() {
+  async function validateElmaCredentials() {
     if (!auth || !selectedConnectionId) return;
-    const result = await api.refreshSnapshot(auth.tokens.accessToken, selectedConnectionId);
-    setMessage(`Snapshot version ${result.version} refreshed`);
+    setError("");
+    setLoadingAction("validate_elma");
+    try {
+      await api.validateElmaCredentials(auth.tokens.accessToken, selectedConnectionId);
+      setMessage("ELMA token validated");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Validation failed");
+    }
+    setLoadingAction("");
+    await load();
   }
 
-  async function generateSemantic() {
+  async function saveLlmToken() {
     if (!auth || !selectedConnectionId) return;
-    await api.generateSemantic(auth.tokens.accessToken, selectedConnectionId);
-    navigate(`/app/connections/${selectedConnectionId}/semantic`);
+    setError("");
+    setLoadingAction("save_llm");
+    await api.saveLlmSettings(auth.tokens.accessToken, selectedConnectionId, { llmToken });
+    setMessage("LLM token saved");
+    setLoadingAction("");
+    await load();
   }
+
+  async function startJob(type: "refresh_schema" | "generate_semantic") {
+    if (!auth || !selectedConnectionId) return;
+    setError("");
+    setLoadingAction(type);
+    const job = await api.createJob(auth.tokens.accessToken, selectedConnectionId, { type });
+    setActiveJobId(job.jobId);
+    setMessage(type === "refresh_schema" ? "Schema refresh started" : "Semantic generation started");
+    setLoadingAction("");
+    await load();
+  }
+
+  useEffect(() => {
+    if (!auth || !activeJobId) return;
+    const pollId = window.setInterval(async () => {
+      const job = await api.getJob(auth.tokens.accessToken, activeJobId);
+      if (job.status === "failed" || job.status === "succeeded" || job.status === "canceled") {
+        window.clearInterval(pollId);
+        setActiveJobId("");
+        if (job.status === "failed") {
+          setError(job.error ?? "Background job failed");
+        } else if (job.status === "succeeded") {
+          setMessage("Background job completed");
+        }
+        await load();
+      }
+    }, 1200);
+    return () => window.clearInterval(pollId);
+  }, [auth, activeJobId]);
 
   return (
     <section>
       <PageHeader
         title="Connections"
-        description="Manage ELMA integrations, credentials, and semantic model generation."
+        description="Control ELMA connection lifecycle: connection, schema sync, LLM setup, semantic readiness."
         action={
           <button className="btn-secondary gap-2">
             <Database className="size-4" />
@@ -203,35 +276,37 @@ function ConnectionsPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <Panel title="New connection" description="Create a shared ELMA endpoint for your company.">
+        <Panel title="Create ELMA connection" description="Create shared instance entry first, then configure your personal credentials.">
           <div className="grid gap-3">
             <input className="field" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Connection name" />
-            <input className="field" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="ELMA base URL" />
+            <input className="field" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-elma-domain.ru/" />
+            <p className="text-xs text-muted">Base URL accepts standard `*.elma365.ru` and custom ELMA domains.</p>
             <div>
-              <button className="btn-primary" onClick={createConnection}>
+              <button className="btn-primary" onClick={createConnection} disabled={loadingAction === "create"}>
                 Create connection
               </button>
             </div>
           </div>
         </Panel>
 
-        <Panel title="Connection list" description="Pick a connection to update credentials and run workflows.">
+        <Panel title="Connection lifecycle" description="Observe current state and what action is needed next.">
           {items.length === 0 ? (
-            <EmptyState title="No connections yet" description="Create your first connection to start setup." />
+            <EmptyState title="No connections yet" description="Create your first ELMA connection to start setup." />
           ) : (
             <div className="grid gap-2">
               {items.map((item) => {
-                const isSelected = selectedConnectionId === item.connectionId;
+                const isSelected = selectedConnectionId === item.connection.connectionId;
                 return (
                   <button
-                    key={item.connectionId}
-                    onClick={() => setSelectedConnectionId(item.connectionId)}
+                    key={item.connection.connectionId}
+                    onClick={() => setSelectedConnectionId(item.connection.connectionId)}
                     className={`focus-ring rounded-lg border px-3 py-2 text-left transition ${
                       isSelected ? "border-accent bg-accent-soft" : "hover:bg-slate-50"
                     }`}
                   >
-                    <p className="text-sm font-medium">{item.displayName}</p>
-                    <p className="text-xs text-muted">{item.baseUrl}</p>
+                    <p className="text-sm font-medium">{item.connection.displayName}</p>
+                    <p className="text-xs text-muted">{item.connection.baseUrl}</p>
+                    <p className="mt-1 text-xs text-accent">{statusLabel(item.status)}</p>
                   </button>
                 );
               })}
@@ -240,36 +315,79 @@ function ConnectionsPage() {
         </Panel>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <Panel title="Credentials" description="Credentials are stored per user and per connection.">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_1fr_1fr]">
+        <Panel title="ELMA connection" description="Required: ELMA token is mandatory to validate access and sync schema.">
           <div className="grid gap-3">
-            <input className="field" value={elmaToken} onChange={(e) => setElmaToken(e.target.value)} placeholder="ELMA token" />
-            <input className="field" value={llmToken} onChange={(e) => setLlmToken(e.target.value)} placeholder="LLM token" />
+            <input className="field" value={elmaToken} onChange={(e) => setElmaToken(e.target.value)} placeholder="ELMA token (required)" />
             <div>
-              <button className="btn-primary" onClick={saveCredentials} disabled={!selectedConnectionId}>
-                Save credentials
+              <button className="btn-primary" onClick={saveElmaCredentials} disabled={!selectedConnectionId || loadingAction === "save_elma"}>
+                Save ELMA token
+              </button>
+              <button className="btn-secondary ml-2" onClick={validateElmaCredentials} disabled={!selectedConnectionId || loadingAction === "validate_elma"}>
+                Validate token
               </button>
             </div>
+            {selected && <p className="text-xs text-muted">Current state: {statusLabel(selected.status)}</p>}
           </div>
         </Panel>
 
-        <Panel title="Workflows" description="Refresh structures and generate semantic mapping.">
+        <Panel title="Schema" description="Refresh snapshot from ELMA after credential is valid.">
           <div className="flex flex-wrap gap-2">
-            <button className="btn-secondary gap-2" onClick={refreshSnapshot} disabled={!selectedConnectionId}>
+            <button
+              className="btn-secondary gap-2"
+              onClick={() => startJob("refresh_schema")}
+              disabled={!selectedConnectionId || !selected?.capabilities.canRefreshSchema || loadingAction === "refresh_schema"}
+            >
               <Search className="size-4" />
-              Refresh snapshot
+              Refresh schema
             </button>
-            <button className="btn-secondary gap-2" onClick={generateSemantic} disabled={!selectedConnectionId}>
-              <Workflow className="size-4" />
-              Generate semantic
+            <p className="text-xs text-muted">
+              {selected?.latest.snapshotVersion ? `Snapshot v${selected.latest.snapshotVersion}` : "No snapshot available"}
+            </p>
+          </div>
+        </Panel>
+
+        <Panel title="LLM and semantic" description="Optional layer over ELMA. Required only for semantic generation and chat.">
+          <div className="grid gap-2">
+            <input className="field" value={llmToken} onChange={(e) => setLlmToken(e.target.value)} placeholder="LLM token (optional)" />
+            <div className="flex flex-wrap gap-2">
+              <button className="btn-primary" onClick={saveLlmToken} disabled={!selectedConnectionId || loadingAction === "save_llm"}>
+                Save LLM token
+              </button>
+              <button
+                className="btn-secondary gap-2"
+                onClick={() => startJob("generate_semantic")}
+                disabled={!selectedConnectionId || !selected?.capabilities.canGenerateSemantic || loadingAction === "generate_semantic"}
+              >
+                <Workflow className="size-4" />
+                Generate semantic
+              </button>
+            </div>
+            <button className="btn-secondary" onClick={() => selectedConnectionId && navigate(`/app/connections/${selectedConnectionId}/semantic`)} disabled={!selectedConnectionId}>
+              Open semantic editor
             </button>
+            <p className={`text-xs ${selected?.capabilities.canChat ? "text-success" : "text-muted"}`}>
+              {selected?.capabilities.canChat ? "Chat ready for this connection" : "Complete ELMA + schema + LLM + semantic to unlock chat"}
+            </p>
           </div>
         </Panel>
       </div>
+      {activeJobId && (
+        <div className="mt-4 inline-flex items-center gap-2 rounded-lg border bg-surface px-3 py-2 text-sm text-muted shadow-panel">
+          <LoaderCircle className="size-4 animate-spin" />
+          Background job in progress
+        </div>
+      )}
       {message && (
         <div className="mt-4 inline-flex items-center gap-2 rounded-lg border bg-surface px-3 py-2 text-sm text-success shadow-panel">
           <CircleCheck className="size-4" />
           {message}
+        </div>
+      )}
+      {error && (
+        <div className="mt-4 inline-flex items-center gap-2 rounded-lg border bg-surface px-3 py-2 text-sm text-danger shadow-panel">
+          <CircleAlert className="size-4" />
+          {error}
         </div>
       )}
     </section>
@@ -322,7 +440,7 @@ function SemanticPage() {
 function ChatPage() {
   const { auth } = useAuth();
   const navigate = useNavigate();
-  const [connections, setConnections] = useState<Array<Connection>>([]);
+  const [connections, setConnections] = useState<Array<{ connectionId: string; displayName: string; baseUrl: string }>>([]);
   const [connectionId, setConnectionId] = useState("");
   const [entity, setEntity] = useState("");
   const [question, setQuestion] = useState("");
@@ -332,11 +450,18 @@ function ChatPage() {
 
   useEffect(() => {
     if (!auth) return;
-    void api.listConnections(auth.tokens.accessToken).then((res) => {
-      setConnections(res.items);
-      setConnectionId(res.items[0]?.connectionId ?? "");
+    void api.listConnectionsForChat(auth.tokens.accessToken).then((res) => {
+      const ready = res.items
+        .filter((item) => item.capabilities.canChat)
+        .map((item) => ({
+          connectionId: item.connection.connectionId,
+          displayName: item.connection.displayName,
+          baseUrl: item.connection.baseUrl
+        }));
+      setConnections(ready);
+      setConnectionId(ready[0]?.connectionId ?? "");
     });
-  }, []);
+  }, [auth]);
 
   async function ask() {
     if (!auth || !connectionId) return;
@@ -350,7 +475,7 @@ function ChatPage() {
     <section>
       <PageHeader title="Chat" description="Ask grounded questions and inspect trace for each answer." />
       <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
-        <Panel title="Query setup" description="Select connection and optional entity filter.">
+        <Panel title="Query setup" description="Only chat-ready connections are available.">
           <div className="grid gap-3">
             <select className="field" value={connectionId} onChange={(e) => setConnectionId(e.target.value)}>
               {connections.map((item) => (
@@ -360,7 +485,7 @@ function ChatPage() {
               ))}
             </select>
             <input className="field" value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="Entity (optional)" />
-            <p className="text-xs text-muted">{activeConnection ? activeConnection.baseUrl : "No connection selected"}</p>
+            <p className="text-xs text-muted">{activeConnection ? activeConnection.baseUrl : "No chat-ready connection selected"}</p>
           </div>
         </Panel>
         <Panel title="Question" description="Use concise task-focused prompts for better traceability.">
@@ -372,7 +497,7 @@ function ChatPage() {
             placeholder="What data do we have for ..."
           />
           <div className="mt-3">
-            <button className="btn-primary" onClick={ask}>
+            <button className="btn-primary" onClick={ask} disabled={!connectionId}>
               Ask
             </button>
           </div>

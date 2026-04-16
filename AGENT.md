@@ -183,6 +183,24 @@
 
 ---
 
+## Обязательные обновления docs для Connections
+
+Если меняется логика `Connections` (модель статусов, UX flow, API endpoints, credentials, schema/semantic jobs), агент обязан в том же changeset обновить минимум:
+
+- `README.md` — актуальный lifecycle и публичные endpoint-ы;
+- `docs/contracts/*` (или эквивалентный раздел) — структура ответов state/read-model и job state machine;
+- ADR в `docs/adr/*` — когда меняются архитектурные границы (например, split ELMA/LLM, async orchestration).
+
+Минимальные продуктовые инварианты, которые нельзя размывать в документации:
+
+- ELMA и LLM — разные уровни логики;
+- ELMA token обязателен для рабочего интеграционного пути;
+- connection — сущность с lifecycle/state, а не просто форма полей;
+- действия `refresh schema` и `generate semantic` трактуются как operational actions (jobs), а не как часть ввода реквизитов;
+- UI обязан показывать `что готово`, `что сломано`, `что делать дальше`.
+
+---
+
 ## Учет monorepo / polyrepo
 
 ### Если это monorepo

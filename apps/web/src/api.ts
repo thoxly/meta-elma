@@ -3,6 +3,54 @@ export type LoginResponse = {
   tokens: Tokens;
   user: { userId: string; companyId: string; email: string; fullName: string };
 };
+export type ConnectionLifecycleStatus =
+  | "requires_elma_token"
+  | "elma_invalid"
+  | "schema_missing"
+  | "schema_syncing"
+  | "llm_missing"
+  | "semantic_missing"
+  | "semantic_generating"
+  | "ready_for_chat"
+  | "requires_action";
+
+export type ConnectionState = {
+  connection: { connectionId: string; displayName: string; baseUrl: string; system: "elma365" };
+  status: ConnectionLifecycleStatus;
+  nextActions: string[];
+  health: {
+    hasElmaToken: boolean;
+    hasLlmToken: boolean;
+    credentialsValid: boolean;
+    snapshotReady: boolean;
+    semanticReady: boolean;
+    semanticMatchesSnapshot: boolean;
+  };
+  capabilities: {
+    canSaveElmaToken: boolean;
+    canRefreshSchema: boolean;
+    canSaveLlmToken: boolean;
+    canGenerateSemantic: boolean;
+    canChat: boolean;
+  };
+  latest: {
+    snapshotVersion: number | null;
+    snapshotUpdatedAt: string | null;
+    semanticVersion: number | null;
+    semanticUpdatedAt: string | null;
+    semanticSnapshotId: string | null;
+  };
+};
+
+export type ConnectionJob = {
+  jobId: string;
+  type: "refresh_schema" | "generate_semantic";
+  status: "queued" | "running" | "succeeded" | "failed" | "canceled";
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  result: Record<string, unknown> | null;
+};
 
 const ENV_API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
 
@@ -52,16 +100,34 @@ export const api = {
     return request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify(input) });
   },
   listConnections(accessToken: string) {
-    return request<{ items: Array<{ connectionId: string; displayName: string; baseUrl: string }> }>("/connections", {}, accessToken);
+    return request<{ items: ConnectionState[] }>("/connections", {}, accessToken);
   },
   createConnection(accessToken: string, input: { displayName: string; baseUrl: string }) {
     return request<{ connectionId: string }>("/connections", { method: "POST", body: JSON.stringify(input) }, accessToken);
   },
-  upsertCredentials(accessToken: string, connectionId: string, input: { elmaToken: string; llmToken?: string }) {
-    return request<{ ok: boolean }>(`/connections/${connectionId}/credentials`, { method: "PUT", body: JSON.stringify(input) }, accessToken);
+  getConnectionState(accessToken: string, connectionId: string) {
+    return request<ConnectionState>(`/connections/${connectionId}/state`, {}, accessToken);
   },
-  refreshSnapshot(accessToken: string, connectionId: string) {
-    return request<{ snapshotId: string; version: number }>(`/connections/${connectionId}/snapshot/refresh`, { method: "POST" }, accessToken);
+  saveElmaCredentials(accessToken: string, connectionId: string, input: { elmaToken: string }) {
+    return request<{ ok: boolean }>(`/connections/${connectionId}/elma-credentials`, { method: "PUT", body: JSON.stringify(input) }, accessToken);
+  },
+  validateElmaCredentials(accessToken: string, connectionId: string) {
+    return request<{ ok: boolean; externalUserId?: string }>(`/connections/${connectionId}/elma-credentials/validate`, { method: "POST" }, accessToken);
+  },
+  saveLlmSettings(accessToken: string, connectionId: string, input: { llmToken: string }) {
+    return request<{ ok: boolean }>(`/connections/${connectionId}/llm-settings`, { method: "PUT", body: JSON.stringify(input) }, accessToken);
+  },
+  validateLlmSettings(accessToken: string, connectionId: string) {
+    return request<{ ok: boolean }>(`/connections/${connectionId}/llm-settings/validate`, { method: "POST" }, accessToken);
+  },
+  createJob(accessToken: string, connectionId: string, input: { type: "refresh_schema" | "generate_semantic" }) {
+    return request<{ jobId: string; status: "queued" }>(`/connections/${connectionId}/jobs`, { method: "POST", body: JSON.stringify(input) }, accessToken);
+  },
+  listJobs(accessToken: string, connectionId: string) {
+    return request<{ items: ConnectionJob[] }>(`/connections/${connectionId}/jobs`, {}, accessToken);
+  },
+  getJob(accessToken: string, jobId: string) {
+    return request<ConnectionJob>(`/jobs/${jobId}`, {}, accessToken);
   },
   generateSemantic(accessToken: string, connectionId: string) {
     return request<{ ok: boolean }>(`/connections/${connectionId}/semantic/generate`, { method: "POST" }, accessToken);
@@ -93,6 +159,9 @@ export const api = {
   },
   listChatSessions(accessToken: string) {
     return request<{ items: Array<{ chatSessionId: string; title: string; updatedAt: string }> }>("/chat/sessions", {}, accessToken);
+  },
+  listConnectionsForChat(accessToken: string) {
+    return request<{ items: ConnectionState[] }>("/connections", {}, accessToken);
   },
   getChatSession(accessToken: string, id: string) {
     return request<{

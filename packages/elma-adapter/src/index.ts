@@ -1,6 +1,6 @@
 import type { ElmaConnector, LiveRecord, SnapshotApp, SnapshotField, SnapshotGroup, SnapshotNamespace, SnapshotPage, SnapshotProcess, StructuralSnapshotPayload } from "@meta-elma/domain";
 
-type RequestOptions = { method?: "GET" | "POST"; token: string; body?: unknown };
+type RequestOptions = { method?: "GET" | "POST"; token: string; body?: unknown; baseUrl?: string };
 
 export interface ElmaClientConfig {
   baseUrl: string;
@@ -59,18 +59,18 @@ function parseObject(payload: unknown): RawElmaEntity {
 }
 
 export class HttpElmaClient implements ElmaConnector {
-  private readonly baseUrl: string;
+  private readonly defaultBaseUrl: string;
   private readonly timeoutMs: number;
   private readonly retryCount: number;
 
   constructor(config: ElmaClientConfig) {
-    this.baseUrl = config.baseUrl;
+    this.defaultBaseUrl = config.baseUrl;
     this.timeoutMs = config.timeoutMs ?? 10000;
     this.retryCount = config.retryCount ?? 2;
   }
 
   private async request(path: string, options: RequestOptions): Promise<unknown> {
-    const url = toUrl(this.baseUrl, path);
+    const url = toUrl(options.baseUrl ?? this.defaultBaseUrl, path);
     const method = options.method ?? "GET";
     let lastError: unknown = null;
     for (let attempt = 0; attempt <= this.retryCount; attempt += 1) {
@@ -103,9 +103,9 @@ export class HttpElmaClient implements ElmaConnector {
     throw lastError instanceof Error ? lastError : new Error("ELMA request failed");
   }
 
-  async validateCredential(_baseUrl: string, token: string): Promise<{ ok: boolean; externalUserId?: string }> {
+  async validateCredential(baseUrl: string, token: string): Promise<{ ok: boolean; externalUserId?: string }> {
     try {
-      const payload = await this.request("/pub/v1/user/list", { token, method: "POST", body: {} });
+      const payload = await this.request("/pub/v1/user/list", { token, method: "POST", body: {}, baseUrl });
       const users = parseCollection(payload);
       const first = users[0];
       return { ok: true, externalUserId: asString(first?.["id"], asString(first?.["code"], "unknown")) };
@@ -114,16 +114,16 @@ export class HttpElmaClient implements ElmaConnector {
     }
   }
 
-  private async listNamespaces(token: string): Promise<SnapshotNamespace[]> {
-    const payload = await this.request("/pub/v1/scheme/namespaces", { token });
+  private async listNamespaces(token: string, baseUrl: string): Promise<SnapshotNamespace[]> {
+    const payload = await this.request("/pub/v1/scheme/namespaces", { token, baseUrl });
     return parseCollection(payload).map((item) => ({
       namespace: asString(item.code, asString(item.namespace, "default")),
       title: asString(item.title, asString(item.name, "Default"))
     }));
   }
 
-  private async listApps(token: string, namespace: string): Promise<Array<{ namespace: string; code: string; title: string }>> {
-    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/apps`, { token });
+  private async listApps(token: string, namespace: string, baseUrl: string): Promise<Array<{ namespace: string; code: string; title: string }>> {
+    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/apps`, { token, baseUrl });
     return parseCollection(payload).map((item) => ({
       namespace,
       code: asString(item.code, asString(item.id, "unknown")),
@@ -131,16 +131,16 @@ export class HttpElmaClient implements ElmaConnector {
     }));
   }
 
-  private async listPages(token: string, namespace: string): Promise<SnapshotPage[]> {
-    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/pages`, { token });
+  private async listPages(token: string, namespace: string, baseUrl: string): Promise<SnapshotPage[]> {
+    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/pages`, { token, baseUrl });
     return parseCollection(payload).map((item) => ({
       pageId: asString(item.id, asString(item.code, crypto.randomUUID())),
       title: asString(item.title, asString(item.name, "Unnamed page"))
     }));
   }
 
-  private async listProcesses(token: string, namespace: string): Promise<SnapshotProcess[]> {
-    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/processes`, { token });
+  private async listProcesses(token: string, namespace: string, baseUrl: string): Promise<SnapshotProcess[]> {
+    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/processes`, { token, baseUrl });
     return parseCollection(payload).map((item) => ({
       namespace,
       code: asString(item.code, asString(item.id, "unknown")),
@@ -148,16 +148,16 @@ export class HttpElmaClient implements ElmaConnector {
     }));
   }
 
-  private async listGroups(token: string): Promise<SnapshotGroup[]> {
-    const payload = await this.request("/pub/v1/scheme/groups/list", { token, method: "POST", body: {} });
+  private async listGroups(token: string, baseUrl: string): Promise<SnapshotGroup[]> {
+    const payload = await this.request("/pub/v1/scheme/groups/list", { token, method: "POST", body: {}, baseUrl });
     return parseCollection(payload).map((item) => ({
       groupId: asString(item.id, asString(item.code, crypto.randomUUID())),
       title: asString(item.title, asString(item.name, "Unnamed group"))
     }));
   }
 
-  private async getAppSchema(token: string, namespace: string, code: string): Promise<{ fields: SnapshotField[]; statuses: Array<{ code: string; title: string }> }> {
-    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/apps/${code}`, { token });
+  private async getAppSchema(token: string, namespace: string, code: string, baseUrl: string): Promise<{ fields: SnapshotField[]; statuses: Array<{ code: string; title: string }> }> {
+    const payload = await this.request(`/pub/v1/scheme/namespaces/${namespace}/apps/${code}`, { token, baseUrl });
     const raw = parseObject(payload) as {
       fields?: Array<{ code?: string; name?: string; title?: string; type?: string; required?: boolean; linkTo?: string }>;
       statuses?: Array<{ code?: string; title?: string; statuses?: Array<{ code?: string; title?: string }> }>;
@@ -179,17 +179,17 @@ export class HttpElmaClient implements ElmaConnector {
     };
   }
 
-  async collectStructuralSnapshot(_baseUrl: string, token: string): Promise<StructuralSnapshotPayload> {
-    const namespaces = await this.listNamespaces(token);
+  async collectStructuralSnapshot(baseUrl: string, token: string): Promise<StructuralSnapshotPayload> {
+    const namespaces = await this.listNamespaces(token, baseUrl);
     const apps: SnapshotApp[] = [];
     const pages: SnapshotPage[] = [];
     const processes: SnapshotProcess[] = [];
     for (const namespace of namespaces) {
-      const namespaceApps = await this.listApps(token, namespace.namespace);
-      pages.push(...(await this.listPages(token, namespace.namespace)));
-      processes.push(...(await this.listProcesses(token, namespace.namespace)));
+      const namespaceApps = await this.listApps(token, namespace.namespace, baseUrl);
+      pages.push(...(await this.listPages(token, namespace.namespace, baseUrl)));
+      processes.push(...(await this.listProcesses(token, namespace.namespace, baseUrl)));
       for (const app of namespaceApps.slice(0, 50)) {
-        const schema = await this.getAppSchema(token, app.namespace, app.code);
+        const schema = await this.getAppSchema(token, app.namespace, app.code, baseUrl);
         apps.push({
           namespace: app.namespace,
           code: app.code,
@@ -199,7 +199,7 @@ export class HttpElmaClient implements ElmaConnector {
         });
       }
     }
-    const groups = await this.listGroups(token);
+    const groups = await this.listGroups(token, baseUrl);
     const relationHints = apps.flatMap((app) =>
       app.fields
         .filter((field) => field.relationHint)
@@ -221,6 +221,7 @@ export class HttpElmaClient implements ElmaConnector {
 
   async searchRecords(input: { baseUrl: string; token: string; entity: string; query: string }): Promise<LiveRecord[]> {
     const payload = await this.request("/pub/v1/app/search", {
+      baseUrl: input.baseUrl,
       token: input.token,
       method: "POST",
       body: { entity: input.entity, query: input.query }
@@ -240,6 +241,7 @@ export class HttpElmaClient implements ElmaConnector {
     relatedEntity: string;
   }): Promise<LiveRecord[]> {
     const payload = await this.request("/pub/v1/app/related", {
+      baseUrl: input.baseUrl,
       token: input.token,
       method: "POST",
       body: {
