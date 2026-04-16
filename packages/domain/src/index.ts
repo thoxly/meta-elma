@@ -118,47 +118,90 @@ export interface ConnectionJob {
 export interface SnapshotNamespace {
   namespace: string;
   title: string;
+  name?: string;
+  apps?: SnapshotApp[];
+  pages?: SnapshotPage[];
+  processes?: SnapshotProcess[];
 }
 
 export interface SnapshotField {
   code: string;
   title: string;
+  name?: string;
   type: string;
   required: boolean;
   relationHint?: string;
+  array?: boolean;
+  single?: boolean;
+  searchable?: boolean;
+  indexed?: boolean;
+  deleted?: boolean;
+  defaultValue?: unknown;
+  calcByFormula?: boolean;
+  formula?: string;
+  view?: Record<string, unknown> | null;
+  data?: Record<string, unknown> | null;
+  raw?: Record<string, unknown>;
 }
 
 export interface SnapshotApp {
   namespace: string;
   code: string;
   title: string;
+  name?: string;
+  elementName?: string;
+  type?: string;
+  meta?: Record<string, unknown>;
   fields: SnapshotField[];
-  statuses: Array<{ code: string; title: string }>;
+  forms?: Record<string, unknown> | null;
+  permissions?: Record<string, unknown> | null;
+  params?: Record<string, unknown> | null;
+  statuses: Array<{ code: string; title: string }> | { statusItems: Record<string, unknown>[]; groupItems: Record<string, unknown>[] } | null;
+  relationHints?: Array<{ from: string; to: string; reason: string }>;
 }
 
 export interface SnapshotPage {
   pageId: string;
   title: string;
+  namespace?: string;
+  code?: string;
+  hidden?: boolean;
+  meta?: Record<string, unknown>;
 }
 
 export interface SnapshotProcess {
   namespace: string;
   code: string;
   title: string;
+  meta?: Record<string, unknown>;
 }
 
 export interface SnapshotGroup {
   groupId: string;
   title: string;
+  raw?: Record<string, unknown>;
 }
 
 export interface StructuralSnapshotPayload {
+  baseUrl?: string;
+  collectedAt?: IsoTimestamp;
   namespaces: SnapshotNamespace[];
   apps: SnapshotApp[];
   pages: SnapshotPage[];
   processes: SnapshotProcess[];
   groups: SnapshotGroup[];
   relationHints: Array<{ from: string; to: string; reason: string }>;
+  stats?: {
+    namespaces: number;
+    apps: number;
+    pages: number;
+    processes: number;
+    groups: number;
+    fields: number;
+    statusEnabledApps: number;
+    relationHints: number;
+  };
+  observedRuntimeNotes?: string[];
 }
 
 export interface Snapshot {

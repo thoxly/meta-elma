@@ -41,6 +41,7 @@ B2B multi-tenant read-only AI assistant for ELMA365.
    - `POST /connections/:id/jobs` with `type: refresh_schema | generate_semantic`
    - `GET /connections/:id/jobs`
    - `GET /jobs/:jobId`
+   - `GET /connections/:id/schema` returns structural snapshot payload collected from ELMA scheme API (`application.fields/forms/permissions/params`, statuses via dedicated statuses endpoint).
 7. Review/edit semantic mapping (`GET/PUT /connections/:id/semantic`).
 8. Ask chat grounded by snapshot + semantic + optional live lookup (`POST /chat`).
 9. Inspect trace payload (`GET /traces/:id`).
@@ -51,6 +52,7 @@ B2B multi-tenant read-only AI assistant for ELMA365.
 - ELMA token is mandatory for a working integration flow.
 - LLM token is optional until semantic/chat features are needed.
 - UI should be driven by `status + capabilities + nextActions` from connection state.
+- `snapshotReady` is true only for structurally meaningful snapshots (non-empty namespaces/apps/fields), not just "any ready row in DB".
 - Chat is available only when connection is `ready_for_chat`.
 
 ## Local development

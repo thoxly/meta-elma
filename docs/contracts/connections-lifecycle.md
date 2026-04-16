@@ -63,6 +63,33 @@ Job statuses:
 - `failed`
 - `canceled`
 
+## Schema snapshot contract
+
+`GET /connections/:id/schema` returns:
+
+- `snapshotId`
+- `version`
+- `createdAt`
+- `payload`
+
+`payload` is a structural ELMA snapshot (not runtime-item sample) and contains:
+
+- `baseUrl`, `collectedAt`
+- `namespaces[]` with nested `apps[]`, `pages[]`, `processes[]`
+- flat `apps[]`, `pages[]`, `processes[]`, `groups[]` for backward compatibility
+- per-app details from ELMA schema:
+  - `namespace`, `code`, `name`, `elementName`, `type`, `meta`
+  - `fields[]` with raw ELMA field metadata (`view`, `data`, formula/index/search flags)
+  - `forms`, `permissions`, `params`
+  - `statuses` loaded via dedicated statuses endpoint (`statusItems`, `groupItems`) when app has `STATUS` field
+  - `relationHints` inferred from `field.data.namespace + field.data.code` (legacy `linkTo` kept as fallback)
+- `stats` counters used by lifecycle/readiness checks
+
+Readiness rule for `snapshotReady`:
+
+- snapshot must be `status = ready`;
+- snapshot must be structurally meaningful (`namespaces > 0`, `apps > 0`, `fields > 0`).
+
 ## Chat readiness
 
 Chat flow (`POST /chat`) expects:

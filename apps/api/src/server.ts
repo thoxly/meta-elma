@@ -7,6 +7,7 @@ import { OpenAIResponsesProvider } from "@meta-elma/llm-adapter";
 import { AesCredentialCrypto, BcryptPasswordHasher, JwtTokenService } from "@meta-elma/security";
 import { YdbStorage } from "@meta-elma/storage";
 import type { AuthContext, Connection, ConnectionJob, ConnectionLifecycleStatus, SemanticMappingDraft } from "@meta-elma/domain";
+import { isStructuralSnapshotMeaningful, toConnectionSchemaResponse } from "./connection-schema.js";
 
 const app = Fastify({ logger: true });
 const storage = new YdbStorage({
@@ -135,7 +136,7 @@ async function deriveConnectionState(auth: AuthContext, connection: Connection) 
   const hasElmaToken = Boolean(credential?.encryptedElmaToken);
   const hasLlmToken = Boolean(credential?.encryptedLlmToken);
   const credentialsValid = Boolean(credential?.isValid);
-  const snapshotReady = Boolean(snapshot?.status === "ready");
+  const snapshotReady = Boolean(snapshot?.status === "ready" && isStructuralSnapshotMeaningful(snapshot.payload));
   const semanticMatchesSnapshot = Boolean(semantic && snapshot && semantic.snapshotId === snapshot.snapshotId);
   const semanticReady = Boolean(semantic && semanticMatchesSnapshot);
 
@@ -496,12 +497,7 @@ app.get("/connections/:id/schema", async (request, reply) => {
   const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
   const snapshot = await storage.getCurrentSnapshotForConnection(id);
   if (!snapshot || snapshot.companyId !== auth.companyId) return reply.code(404).send({ error: "Schema snapshot not found" });
-  return {
-    snapshotId: snapshot.snapshotId,
-    version: snapshot.version,
-    createdAt: snapshot.createdAt,
-    payload: snapshot.payload
-  };
+  return toConnectionSchemaResponse(snapshot);
 });
 
 app.get("/connections/:id/semantic", async (request, reply) => {
