@@ -57,28 +57,35 @@ function AuthPage() {
     }
   }
 
+  function onAuthSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submit();
+  }
+
   return (
     <main className="mx-auto mt-14 max-w-md px-4">
       <Panel title="Meta ELMA" description="Internal assistant for ELMA365">
         <div className="mb-4 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent">
           {isRegister ? "Create company workspace" : "Sign in to workspace"}
         </div>
-        <div className="grid gap-3">
-          {isRegister && (
-            <input className="field" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company name" />
-          )}
-          {isRegister && <input className="field" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />}
-          <input className="field" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-          <input className="field" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
-        </div>
-        <div className="mt-4 flex gap-2">
-          <button className="btn-primary flex-1" onClick={submit}>
-            {isRegister ? "Create account" : "Login"}
-          </button>
-          <button className="btn-secondary" onClick={() => setIsRegister((v) => !v)}>
-            {isRegister ? "Use login" : "Use register"}
-          </button>
-        </div>
+        <form onSubmit={onAuthSubmit}>
+          <div className="grid gap-3">
+            {isRegister && (
+              <input className="field" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company name" />
+            )}
+            {isRegister && <input className="field" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />}
+            <input className="field" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
+            <input className="field" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button className="btn-primary flex-1" type="submit">
+              {isRegister ? "Create account" : "Login"}
+            </button>
+            <button className="btn-secondary" type="button" onClick={() => setIsRegister((v) => !v)}>
+              {isRegister ? "Use login" : "Use register"}
+            </button>
+          </div>
+        </form>
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
       </Panel>
     </main>
@@ -214,6 +221,11 @@ function ConnectionsPage() {
     setError("");
     setLoadingAction("validate_elma");
     try {
+      // If user entered a token but didn't click Save yet,
+      // persist it first so validation uses the latest value.
+      if (elmaToken.trim().length > 0) {
+        await api.saveElmaCredentials(auth.tokens.accessToken, selectedConnectionId, { elmaToken: elmaToken.trim() });
+      }
       await api.validateElmaCredentials(auth.tokens.accessToken, selectedConnectionId);
       setMessage("ELMA token validated");
     } catch (err) {
