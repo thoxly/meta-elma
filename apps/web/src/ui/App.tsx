@@ -71,11 +71,39 @@ function AuthPage() {
         <form onSubmit={onAuthSubmit}>
           <div className="grid gap-3">
             {isRegister && (
-              <input className="field" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company name" />
+              <input
+                className="field"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Company name"
+                autoComplete="organization"
+              />
             )}
-            {isRegister && <input className="field" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />}
-            <input className="field" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-            <input className="field" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
+            {isRegister && (
+              <input
+                className="field"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Full name"
+                autoComplete="name"
+              />
+            )}
+            <input
+              className="field"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              type="email"
+              autoComplete={isRegister ? "email" : "username"}
+            />
+            <input
+              className="field"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              type="password"
+              autoComplete={isRegister ? "new-password" : "current-password"}
+            />
           </div>
           <div className="mt-4 flex gap-2">
             <button className="btn-primary flex-1" type="submit">

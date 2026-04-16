@@ -19,6 +19,15 @@ resource "yandex_ydb_database_serverless" "app" {
   folder_id = var.folder_id
 }
 
+resource "yandex_ydb_database_iam_binding" "runtime_ydb_editor" {
+  database_id = yandex_ydb_database_serverless.app.id
+  role        = "ydb.editor"
+
+  members = [
+    "serviceAccount:${var.runtime_sa_id}"
+  ]
+}
+
 resource "yandex_serverless_container" "backend" {
   name               = var.container_name
   description        = "ELMA GPT wrapper backend"
@@ -60,6 +69,15 @@ resource "yandex_serverless_container" "backend" {
 resource "yandex_serverless_container_iam_binding" "gateway_invoker" {
   container_id = yandex_serverless_container.backend.id
   role         = "serverless-containers.containerInvoker"
+
+  members = [
+    "serviceAccount:${var.runtime_sa_id}"
+  ]
+}
+
+resource "yandex_lockbox_secret_iam_binding" "runtime_lockbox_payload_viewer" {
+  secret_id = var.lockbox_secret_id
+  role      = "lockbox.payloadViewer"
 
   members = [
     "serviceAccount:${var.runtime_sa_id}"
@@ -119,6 +137,19 @@ resource "yandex_api_gateway" "http" {
             service_account_id: ${var.runtime_sa_id}
         options:
           operationId: connectionsOptions
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /connections/{id}:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
+        delete:
+          operationId: deleteConnection
           x-yc-apigateway-integration:
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
