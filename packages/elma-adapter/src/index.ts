@@ -52,6 +52,21 @@ async function parseJsonOrText(res: Response): Promise<unknown> {
   }
 }
 
+function getRetryDelayMs(error: unknown): number | null {
+  if (!(error instanceof ElmaApiError)) return null;
+  if (error.statusCode !== 429) return null;
+  const payload = parseObject(error.payload);
+  const retryAfterValue = payload.retryAfter ?? payload.retry_after ?? payload["Retry-After"];
+  if (typeof retryAfterValue === "number" && Number.isFinite(retryAfterValue)) {
+    return Math.max(250, retryAfterValue * 1000);
+  }
+  if (typeof retryAfterValue === "string") {
+    const asNumber = Number(retryAfterValue);
+    if (Number.isFinite(asNumber)) return Math.max(250, asNumber * 1000);
+  }
+  return 1200;
+}
+
 function parseCollection(payload: unknown): RawElmaEntity[] {
   if (Array.isArray(payload)) return payload as RawElmaEntity[];
   if (payload && typeof payload === "object") {
@@ -141,7 +156,8 @@ export class HttpElmaClient implements ElmaConnector {
         clearTimeout(timeout);
         lastError = error;
         if (attempt < this.retryCount) {
-          await sleep(200 * (attempt + 1));
+          const retryDelayMs = getRetryDelayMs(error);
+          await sleep(retryDelayMs ?? 200 * (attempt + 1));
         }
       }
     }
@@ -303,15 +319,56 @@ export class HttpElmaClient implements ElmaConnector {
     const pages: SnapshotPage[] = [];
     const processes: SnapshotProcess[] = [];
     const namespaceViews: SnapshotNamespace[] = [];
+    const warnings: string[] = [];
+    let skippedApps = 0;
     for (const namespace of namespaces) {
-      const namespaceApps = await this.listApps(token, namespace.namespace, baseUrl);
-      const namespacePages = await this.listPages(token, namespace.namespace, baseUrl);
-      const namespaceProcesses = await this.listProcesses(token, namespace.namespace, baseUrl);
+      let namespaceApps: Array<{ namespace: string; code: string; title: string; name?: string; type?: string; meta?: Record<string, unknown> }> = [];
+      let namespacePages: SnapshotPage[] = [];
+      let namespaceProcesses: SnapshotProcess[] = [];
+      try {
+        namespaceApps = await this.listApps(token, namespace.namespace, baseUrl);
+      } catch (error) {
+        warnings.push(`list_apps_failed:${namespace.namespace}`);
+        debugSchemaLog("namespace apps failed", {
+          namespace: namespace.namespace,
+          message: error instanceof Error ? error.message : "unknown_error"
+        });
+      }
+      try {
+        namespacePages = await this.listPages(token, namespace.namespace, baseUrl);
+      } catch (error) {
+        warnings.push(`list_pages_failed:${namespace.namespace}`);
+        debugSchemaLog("namespace pages failed", {
+          namespace: namespace.namespace,
+          message: error instanceof Error ? error.message : "unknown_error"
+        });
+      }
+      try {
+        namespaceProcesses = await this.listProcesses(token, namespace.namespace, baseUrl);
+      } catch (error) {
+        warnings.push(`list_processes_failed:${namespace.namespace}`);
+        debugSchemaLog("namespace processes failed", {
+          namespace: namespace.namespace,
+          message: error instanceof Error ? error.message : "unknown_error"
+        });
+      }
       pages.push(...namespacePages);
       processes.push(...namespaceProcesses);
       const namespaceAppsDetailed: SnapshotApp[] = [];
       for (const app of namespaceApps.slice(0, 50)) {
-        const schema = await this.getAppSchema(token, app.namespace, app.code, baseUrl);
+        let schema: Awaited<ReturnType<HttpElmaClient["getAppSchema"]>> | null = null;
+        try {
+          schema = await this.getAppSchema(token, app.namespace, app.code, baseUrl);
+        } catch (error) {
+          skippedApps += 1;
+          warnings.push(`app_schema_failed:${app.namespace}.${app.code}`);
+          debugSchemaLog("app schema failed", {
+            app: `${app.namespace}.${app.code}`,
+            message: error instanceof Error ? error.message : "unknown_error"
+          });
+          continue;
+        }
+        if (!schema) continue;
         const appSnapshot: SnapshotApp = {
           namespace: app.namespace,
           code: app.code,
@@ -373,7 +430,9 @@ export class HttpElmaClient implements ElmaConnector {
       groups: groups.length,
       fields: fieldsCount,
       statusEnabledApps,
-      relationHints: relationHints.length
+      relationHints: relationHints.length,
+      skippedApps,
+      warningsCount: warnings.length
     });
     return {
       baseUrl,
@@ -399,7 +458,8 @@ export class HttpElmaClient implements ElmaConnector {
         "runtime_items_can_be_sparse_vs_schema",
         "sys_user_can_be_uuid_or_uuid_array",
         "datetime_values_are_iso_strings",
-        "__version_can_be_technical_numeric_value"
+        "__version_can_be_technical_numeric_value",
+        ...warnings
       ]
     };
   }

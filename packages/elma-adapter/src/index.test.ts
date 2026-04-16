@@ -193,3 +193,55 @@ test("collectStructuralSnapshot parses nested ELMA namespace/app/page/process pa
     globalThis.fetch = originalFetch;
   }
 });
+
+test("collectStructuralSnapshot continues when one app schema fails with 429", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/pub/v1/scheme/namespaces")) {
+      return new Response(JSON.stringify({ result: { result: [{ code: "service_desk", name: "Service Desk" }] } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    if (url.endsWith("/pub/v1/scheme/namespaces/service_desk/apps")) {
+      return new Response(
+        JSON.stringify([
+          { namespace: "service_desk", code: "ok_app", name: "OK app", type: "STANDARD" },
+          { namespace: "service_desk", code: "rfc", name: "RFC", type: "STANDARD" }
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (url.endsWith("/pub/v1/scheme/namespaces/service_desk/pages") || url.endsWith("/pub/v1/scheme/namespaces/service_desk/processes")) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.endsWith("/pub/v1/scheme/namespaces/service_desk/apps/ok_app")) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          application: { code: "ok_app", namespace: "service_desk", name: "OK app", fields: [{ code: "__name", type: "STRING", required: true }] }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (url.endsWith("/pub/v1/scheme/namespaces/service_desk/apps/rfc")) {
+      return new Response("Too Many Requests", { status: 429, headers: { "content-type": "text/plain" } });
+    }
+    if (url.endsWith("/pub/v1/scheme/groups/list")) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ error: `Unexpected URL: ${url}` }), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const client = new HttpElmaClient({ baseUrl: "https://tenant.elma365.ru", retryCount: 0 });
+    const payload = await client.collectStructuralSnapshot("https://tenant.elma365.ru", "token");
+    assert.equal(payload.apps.length, 1);
+    assert.equal(payload.apps[0]?.code, "ok_app");
+    assert.equal(payload.stats?.apps, 1);
+    assert.equal(payload.observedRuntimeNotes?.some((note) => note === "app_schema_failed:service_desk.rfc"), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
