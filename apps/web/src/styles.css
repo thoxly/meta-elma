@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color: #111827;
+    background: #f7f8fa;
+    font-family:
+      Inter,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply m-0 bg-background text-foreground antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply m-0 font-semibold tracking-tight text-foreground;
+  }
+}
+
+@layer components {
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+  }
+
+  .field {
+    @apply focus-ring h-10 w-full rounded-lg border bg-surface px-3 text-sm text-foreground shadow-sm transition placeholder:text-muted;
+  }
+
+  .btn {
+    @apply focus-ring inline-flex h-10 items-center justify-center rounded-lg border border-transparent px-3 text-sm font-medium transition;
+  }
+  
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent text-white hover:bg-blue-700;
+  }
+
+  .btn-secondary {
+    @apply btn border-border bg-surface text-foreground hover:bg-slate-50;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-muted hover:bg-slate-100 hover:text-foreground;
+  }
+}
