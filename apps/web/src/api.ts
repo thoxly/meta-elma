@@ -52,6 +52,13 @@ export type ConnectionJob = {
   result: Record<string, unknown> | null;
 };
 
+export type ConnectionSchemaSnapshot = {
+  snapshotId: string;
+  version: number;
+  createdAt: string;
+  payload: Record<string, unknown>;
+};
+
 const ENV_API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "");
 
 function isLocalHost(hostname: string): boolean {
@@ -132,6 +139,9 @@ export const api = {
   },
   getJob(accessToken: string, jobId: string) {
     return request<ConnectionJob>(`/jobs/${jobId}`, {}, accessToken);
+  },
+  getConnectionSchema(accessToken: string, connectionId: string) {
+    return request<ConnectionSchemaSnapshot>(`/connections/${connectionId}/schema`, {}, accessToken);
   },
   generateSemantic(accessToken: string, connectionId: string) {
     return request<{ ok: boolean }>(`/connections/${connectionId}/semantic/generate`, { method: "POST" }, accessToken);

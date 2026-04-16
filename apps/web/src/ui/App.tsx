@@ -188,6 +188,8 @@ function ConnectionsPage() {
   const [error, setError] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
   const [activeJobId, setActiveJobId] = useState("");
+  const [schemaPreviewByConnectionId, setSchemaPreviewByConnectionId] = useState<Record<string, string>>({});
+  const [schemaLoadingConnectionId, setSchemaLoadingConnectionId] = useState("");
   const navigate = useNavigate();
 
   const selected = useMemo(
@@ -309,6 +311,31 @@ function ConnectionsPage() {
     await load();
   }
 
+  async function toggleSchemaPreview(connectionId: string) {
+    if (!auth) return;
+    if (schemaPreviewByConnectionId[connectionId]) {
+      setSchemaPreviewByConnectionId((current) => {
+        const next = { ...current };
+        delete next[connectionId];
+        return next;
+      });
+      return;
+    }
+    setError("");
+    setSchemaLoadingConnectionId(connectionId);
+    try {
+      const snapshot = await api.getConnectionSchema(auth.tokens.accessToken, connectionId);
+      setSchemaPreviewByConnectionId((current) => ({
+        ...current,
+        [connectionId]: JSON.stringify(snapshot.payload, null, 2)
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load schema");
+    } finally {
+      setSchemaLoadingConnectionId("");
+    }
+  }
+
   useEffect(() => {
     if (!auth || !activeJobId) return;
     const pollId = window.setInterval(async () => {
@@ -393,7 +420,20 @@ function ConnectionsPage() {
                         <Trash2 className="size-3.5" />
                         Delete
                       </button>
+                      <button
+                        className="btn-secondary gap-2 text-xs"
+                        onClick={() => void toggleSchemaPreview(item.connection.connectionId)}
+                        disabled={!item.latest.snapshotVersion || schemaLoadingConnectionId === item.connection.connectionId}
+                      >
+                        <Database className="size-3.5" />
+                        {schemaPreviewByConnectionId[item.connection.connectionId] ? "Hide schema" : "Show schema"}
+                      </button>
                     </div>
+                    {schemaPreviewByConnectionId[item.connection.connectionId] && (
+                      <pre className="mt-2 max-h-64 overflow-auto rounded-lg border bg-slate-50 p-2 text-xs">
+                        {schemaPreviewByConnectionId[item.connection.connectionId]}
+                      </pre>
+                    )}
                   </div>
                 );
               })}

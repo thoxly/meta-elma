@@ -244,9 +244,10 @@ app.post("/auth/register", async (request, reply) => {
     updatedAt: now()
   });
 
-  const tokens = tokenService.createTokens({ userId, companyId, email: body.email });
+  const sessionId = crypto.randomUUID();
+  const tokens = tokenService.createTokens({ userId, companyId, email: body.email, sessionId });
   await storage.createRefreshSession({
-    sessionId: crypto.randomUUID(),
+    sessionId,
     userId,
     refreshTokenHash: tokenService.hashRefreshToken(tokens.refreshToken),
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -263,9 +264,10 @@ app.post("/auth/login", async (request, reply) => {
   if (!user || !(await hasher.verify(body.password, user.passwordHash))) {
     return reply.code(401).send({ error: "Invalid credentials" });
   }
-  const tokens = tokenService.createTokens({ userId: user.userId, companyId: user.companyId, email: user.email });
+  const sessionId = crypto.randomUUID();
+  const tokens = tokenService.createTokens({ userId: user.userId, companyId: user.companyId, email: user.email, sessionId });
   await storage.createRefreshSession({
-    sessionId: crypto.randomUUID(),
+    sessionId,
     userId: user.userId,
     refreshTokenHash: tokenService.hashRefreshToken(tokens.refreshToken),
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -486,6 +488,20 @@ app.get("/jobs/:jobId", async (request, reply) => {
   const job = await storage.getJobById(jobId);
   if (!job || job.companyId !== auth.companyId) return reply.code(404).send({ error: "Job not found" });
   return job;
+});
+
+app.get("/connections/:id/schema", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const snapshot = await storage.getCurrentSnapshotForConnection(id);
+  if (!snapshot || snapshot.companyId !== auth.companyId) return reply.code(404).send({ error: "Schema snapshot not found" });
+  return {
+    snapshotId: snapshot.snapshotId,
+    version: snapshot.version,
+    createdAt: snapshot.createdAt,
+    payload: snapshot.payload
+  };
 });
 
 app.get("/connections/:id/semantic", async (request, reply) => {
