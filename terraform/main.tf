@@ -42,11 +42,12 @@ resource "yandex_serverless_container" "backend" {
   image {
     url = "cr.yandex/${var.registry_id}/${var.image_name}:${var.image_tag}"
     environment = {
-      NODE_ENV       = "production"
-      YDB_ENDPOINT   = yandex_ydb_database_serverless.app.ydb_api_endpoint
-      YDB_DATABASE   = yandex_ydb_database_serverless.app.database_path
-      STORAGE_BUCKET = var.bucket_name
-      APP_IMAGE_TAG  = var.image_tag
+      NODE_ENV          = "production"
+      ELMA_SCHEMA_DEBUG = "1"
+      YDB_ENDPOINT      = yandex_ydb_database_serverless.app.ydb_api_endpoint
+      YDB_DATABASE      = yandex_ydb_database_serverless.app.database_path
+      STORAGE_BUCKET    = var.bucket_name
+      APP_IMAGE_TAG     = var.image_tag
     }
   }
 
