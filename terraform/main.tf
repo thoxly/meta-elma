@@ -123,6 +123,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections/{id}/state:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         get:
           operationId: getConnectionState
           x-yc-apigateway-integration:
@@ -130,6 +136,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections/{id}/elma-credentials:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         put:
           operationId: saveElmaCredentials
           x-yc-apigateway-integration:
@@ -137,6 +149,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections/{id}/elma-credentials/validate:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         post:
           operationId: validateElmaCredentials
           x-yc-apigateway-integration:
@@ -144,6 +162,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections/{id}/llm-settings:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         put:
           operationId: saveLlmSettings
           x-yc-apigateway-integration:
@@ -151,6 +175,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections/{id}/llm-settings/validate:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         post:
           operationId: validateLlmSettings
           x-yc-apigateway-integration:
@@ -158,6 +188,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections/{id}/jobs:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         get:
           operationId: listConnectionJobs
           x-yc-apigateway-integration:
@@ -171,6 +207,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /connections/{id}/semantic:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         get:
           operationId: getConnectionSemantic
           x-yc-apigateway-integration:
@@ -184,6 +226,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /jobs/{jobId}:
+        parameters:
+          - name: jobId
+            in: path
+            required: true
+            schema:
+              type: string
         get:
           operationId: getJob
           x-yc-apigateway-integration:
@@ -198,6 +246,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /chat/sessions/{id}:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         get:
           operationId: getChatSession
           x-yc-apigateway-integration:
@@ -205,6 +259,12 @@ resource "yandex_api_gateway" "http" {
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
       /traces/{id}:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: string
         get:
           operationId: getTrace
           x-yc-apigateway-integration:
