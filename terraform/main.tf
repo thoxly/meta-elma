@@ -82,6 +82,27 @@ resource "yandex_api_gateway" "http" {
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
             service_account_id: ${var.runtime_sa_id}
+      /ready:
+        get:
+          operationId: ready
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /auth/register:
+        post:
+          operationId: authRegister
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /auth/login:
+        post:
+          operationId: authLogin
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
       /connections:
         post:
           operationId: connections

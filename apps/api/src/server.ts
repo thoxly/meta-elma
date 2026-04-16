@@ -1,296 +1,359 @@
 import Fastify from "fastify";
-import cors from "@fastify/cors";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { buildCompactPromptContext } from "@meta-elma/context-engine";
-import type {
-  ChatMessage,
-  ChatSession,
-  ContextSnapshot,
-  ElmaConnection,
-  TokenProvider,
-  UserScopedContext
-} from "@meta-elma/domain";
 import { HttpElmaClient } from "@meta-elma/elma-adapter";
 import { OpenAIResponsesProvider } from "@meta-elma/llm-adapter";
-import {
-  InMemoryConnectionRepository,
-  InMemorySnapshotRepository
-} from "@meta-elma/storage";
+import { AesCredentialCrypto, BcryptPasswordHasher, JwtTokenService } from "@meta-elma/security";
+import { YdbStorage } from "@meta-elma/storage";
+import type { AuthContext, SemanticMappingDraft } from "@meta-elma/domain";
 
 const app = Fastify({ logger: true });
-
-const allowedOrigins = new Set(
-  (process.env.CORS_ALLOWED_ORIGINS ??
-    "https://meta-elma-web.vercel.app,http://localhost:5173,http://localhost:3000")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-);
-
-await app.register(cors, {
-  origin(origin, callback) {
-    // Allow server-to-server calls and local tools that do not send Origin.
-    if (!origin) {
-      callback(null, true);
-      return;
-    }
-
-    if (allowedOrigins.has(origin) || origin.endsWith(".vercel.app")) {
-      callback(null, true);
-      return;
-    }
-
-    callback(new Error("Origin not allowed by CORS"), false);
-  },
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 204
+const storage = new YdbStorage({
+  endpoint: process.env.YDB_ENDPOINT ?? "grpc://localhost:2136",
+  database: process.env.YDB_DATABASE ?? "/local",
+  authToken: process.env.YDB_TOKEN
 });
+const elma = new HttpElmaClient({ baseUrl: process.env.ELMA_BASE_URL ?? "https://api.elma365.com" });
+const llm = new OpenAIResponsesProvider({ model: process.env.OPENAI_MODEL ?? "gpt-4o-mini" });
+const hasher = new BcryptPasswordHasher();
+const tokenService = new JwtTokenService(
+  process.env.JWT_ACCESS_SECRET ?? "dev-access-secret",
+  process.env.JWT_REFRESH_SECRET ?? "dev-refresh-secret"
+);
+const cryptoBox = new AesCredentialCrypto(process.env.CREDENTIAL_MASTER_SECRET ?? "dev-master-secret");
 
-const connectionRepo = new InMemoryConnectionRepository();
-const snapshotRepo = new InMemorySnapshotRepository();
-const llm = new OpenAIResponsesProvider();
-const sessions = new Map<string, ChatSession>();
-const messages = new Map<string, ChatMessage[]>();
-const traces = new Map<string, Record<string, unknown>>();
-const contexts = new Map<string, UserScopedContext>();
+function now(): string {
+  return new Date().toISOString();
+}
 
-class EnvTokenProvider implements TokenProvider {
-  async getTokenForConnection(_connectionId: string): Promise<string> {
-    const token = process.env.ELMA_USER_TOKEN;
-    if (!token) {
-      throw new Error("ELMA_USER_TOKEN is not configured");
-    }
-    return token;
+function hashOf(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+async function requireAuth(request: { headers: Record<string, unknown> }, reply: { code: (x: number) => { send: (x: unknown) => void } }): Promise<AuthContext | null> {
+  const raw = String(request.headers.authorization ?? "");
+  if (!raw.startsWith("Bearer ")) {
+    reply.code(401).send({ error: "Unauthorized" });
+    return null;
+  }
+  try {
+    return tokenService.verifyAccessToken(raw.slice(7));
+  } catch {
+    reply.code(401).send({ error: "Invalid token" });
+    return null;
   }
 }
 
-const tokenProvider = new EnvTokenProvider();
-const elmaClient = new HttpElmaClient({
-  baseUrl: process.env.ELMA_BASE_URL ?? "https://api.elma365.com"
-});
-
-function fallbackContext(connection: ElmaConnection): UserScopedContext {
-  return {
-    connectionId: connection.connectionId,
-    sourceUserId: connection.sourceUserId,
-    sourceInstanceId: connection.sourceInstanceId,
-    fetchedAt: new Date().toISOString(),
-    user: { userId: connection.sourceUserId, fullName: connection.displayName },
-    namespaces: [],
-    apps: [],
-    appSchemas: [],
-    pages: [],
-    processes: [],
-    groups: [],
-    roleSubjects: []
-  };
-}
-
-function computeSchemaHash(context: UserScopedContext): string {
-  const payload = JSON.stringify({
-    namespaces: context.namespaces.map((item) => item.namespace).sort(),
-    apps: context.apps.map((item) => `${item.namespace}:${item.code}`).sort(),
-    processes: context.processes.map((item) => `${item.namespace}:${item.code}`).sort()
-  });
-  return createHash("sha256").update(payload).digest("hex");
-}
-
-app.addHook("onRequest", async (req) => {
-  req.headers["x-request-id"] = req.headers["x-request-id"] ?? crypto.randomUUID();
-});
-
 app.get("/health", async () => ({ status: "ok" }));
-app.get("/ready", async () => ({ status: "ready", checks: ["api"] }));
-
-app.options("/connections", async (_req, reply) => {
-  return reply
-    .code(204)
-    .header("Access-Control-Allow-Origin", "https://meta-elma-web.vercel.app")
-    .header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-    .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    .send();
+app.get("/ready", async (_request, reply) => {
+  try {
+    await storage.ping();
+    return { status: "ready", checks: ["api", "ydb"] };
+  } catch {
+    return reply.code(503).send({ status: "not_ready", checks: ["api"], failed: ["ydb"] });
+  }
 });
 
-app.post("/connections", async (req, reply) => {
-  const schema = z.object({
-    ownerUserId: z.string().min(1),
-    sourceInstanceId: z.string().min(1),
-    sourceUserId: z.string().min(1),
-    displayName: z.string().min(1)
+app.post("/auth/register", async (request, reply) => {
+  const body = z.object({
+    companyName: z.string().min(1),
+    fullName: z.string().min(1),
+    email: z.string().email(),
+    password: z.string().min(8)
+  }).parse(request.body);
+
+  const existing = await storage.getByEmail(body.email);
+  if (existing) return reply.code(409).send({ error: "Email already exists" });
+
+  const companyId = crypto.randomUUID();
+  const userId = crypto.randomUUID();
+  await storage.createCompany({ companyId, name: body.companyName, createdAt: now() });
+  await storage.createUser({
+    userId,
+    companyId,
+    email: body.email,
+    fullName: body.fullName,
+    passwordHash: await hasher.hash(body.password),
+    isActive: true,
+    createdAt: now(),
+    updatedAt: now()
   });
-  const body = schema.parse(req.body);
-  const now = new Date().toISOString();
+
+  const tokens = tokenService.createTokens({ userId, companyId, email: body.email });
+  await storage.createRefreshSession({
+    sessionId: crypto.randomUUID(),
+    userId,
+    refreshTokenHash: tokenService.hashRefreshToken(tokens.refreshToken),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    revokedAt: null,
+    createdAt: now()
+  });
+
+  return reply.code(201).send({ tokens, user: { userId, companyId, email: body.email, fullName: body.fullName } });
+});
+
+app.post("/auth/login", async (request, reply) => {
+  const body = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(request.body);
+  const user = await storage.getByEmail(body.email);
+  if (!user || !(await hasher.verify(body.password, user.passwordHash))) {
+    return reply.code(401).send({ error: "Invalid credentials" });
+  }
+  const tokens = tokenService.createTokens({ userId: user.userId, companyId: user.companyId, email: user.email });
+  await storage.createRefreshSession({
+    sessionId: crypto.randomUUID(),
+    userId: user.userId,
+    refreshTokenHash: tokenService.hashRefreshToken(tokens.refreshToken),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    revokedAt: null,
+    createdAt: now()
+  });
+  return { tokens, user: { userId: user.userId, companyId: user.companyId, email: user.email, fullName: user.fullName } };
+});
+
+app.post("/connections", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const body = z.object({ displayName: z.string().min(1), baseUrl: z.string().url() }).parse(request.body);
   const connection = {
     connectionId: crypto.randomUUID(),
-    ...body,
-    isActive: true,
-    createdAt: now,
-    updatedAt: now
+    companyId: auth.companyId,
+    system: "elma365" as const,
+    displayName: body.displayName,
+    baseUrl: body.baseUrl,
+    createdByUserId: auth.userId,
+    createdAt: now(),
+    updatedAt: now()
   };
-  await connectionRepo.create(connection);
+  await storage.createConnection(connection);
   return reply.code(201).send(connection);
 });
 
-app.get("/connections", async (req) => {
-  const ownerUserId = String(req.query ? (req.query as Record<string, string>).ownerUserId ?? "" : "");
-  return connectionRepo.listByOwner(ownerUserId);
+app.get("/connections", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const all = await storage.listByCompany(auth.companyId);
+  const userCreds = await storage.listForUser(auth.userId);
+  const visible = all.filter((connection) => userCreds.some((cred) => cred.connectionId === connection.connectionId));
+  return { items: visible };
 });
 
-app.post("/context/refresh", async (req, reply) => {
-  const schema = z.object({ connectionId: z.string().min(1) });
-  const body = schema.parse(req.body);
-  const connection = await connectionRepo.getById(body.connectionId);
-  if (!connection) {
-    return reply.code(404).send({ error: "Connection not found" });
-  }
+app.put("/connections/:id/credentials", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const params = z.object({ id: z.string().min(1) }).parse(request.params);
+  const body = z.object({ elmaToken: z.string().min(1), llmToken: z.string().optional() }).parse(request.body);
+  const connection = await storage.getConnectionById(params.id);
+  if (!connection || connection.companyId !== auth.companyId) return reply.code(404).send({ error: "Connection not found" });
 
-  let context = fallbackContext(connection);
-  let status: ContextSnapshot["status"] = "ready";
-  try {
-    const token = await tokenProvider.getTokenForConnection(connection.connectionId);
-    context = await elmaClient.collectUserScopedContext(connection, token);
-  } catch (error) {
-    status = "failed";
-    req.log.error({ error }, "Context refresh failed, using fallback context");
-  }
-  contexts.set(connection.connectionId, context);
-  const snapshot: ContextSnapshot = {
-    snapshotId: crypto.randomUUID(),
-    connectionId: connection.connectionId,
-    sourceUserId: connection.sourceUserId,
-    sourceInstanceId: connection.sourceInstanceId,
-    contextVersion: "v1",
-    schemaHash: computeSchemaHash(context),
-    fetchedAt: new Date().toISOString(),
-    mode: "normalized_full",
-    status
-  };
-  await snapshotRepo.saveSnapshot(snapshot);
-  return { snapshotId: snapshot.snapshotId, status: snapshot.status };
-});
+  const validation = await elma.validateCredential(connection.baseUrl, body.elmaToken);
+  if (!validation.ok) return reply.code(400).send({ error: "ELMA token validation failed" });
 
-app.get("/context/current", async (req, reply) => {
-  const connectionId = String((req.query as Record<string, string>)?.connectionId ?? "");
-  const snapshot = await snapshotRepo.getLatestByConnection(connectionId);
-  if (!snapshot) {
-    return reply.code(404).send({ error: "No snapshot found" });
-  }
-  return snapshot;
-});
-
-app.get("/context/current/compact", async (req, reply) => {
-  const connectionId = String((req.query as Record<string, string>)?.connectionId ?? "");
-  const context = contexts.get(connectionId);
-  if (!context) {
-    return reply.code(404).send({ error: "No context found. Call /context/refresh first." });
-  }
-  return buildCompactPromptContext(context);
-});
-
-app.get("/debug/context", async (req, reply) => {
-  const connectionId = String((req.query as Record<string, string>)?.connectionId ?? "");
-  const context = contexts.get(connectionId);
-  if (!context) {
-    return reply.code(404).send({ error: "No context found. Call /context/refresh first." });
-  }
-  return context;
-});
-
-app.post("/chat", async (req, reply) => {
-  const schema = z.object({
-    ownerUserId: z.string().min(1),
-    connectionId: z.string().min(1),
-    mode: z.enum(["ask_system", "solution_assistant", "context_inspect"]),
-    question: z.string().min(1),
-    sessionId: z.string().optional()
+  const current = await storage.getForUserAndConnection(auth.userId, params.id);
+  await storage.upsert({
+    credentialId: current?.credentialId ?? crypto.randomUUID(),
+    companyId: auth.companyId,
+    connectionId: params.id,
+    userId: auth.userId,
+    encryptedElmaToken: cryptoBox.encrypt(body.elmaToken),
+    encryptedLlmToken: body.llmToken ? cryptoBox.encrypt(body.llmToken) : null,
+    encryptionVersion: cryptoBox.version(),
+    isValid: true,
+    createdAt: current?.createdAt ?? now(),
+    updatedAt: now()
   });
-  const body = schema.parse(req.body);
+  return { ok: true };
+});
 
-  const connection = await connectionRepo.getById(body.connectionId);
-  if (!connection) {
-    return reply.code(404).send({ error: "Connection not found" });
+app.post("/connections/:id/snapshot/refresh", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const connection = await storage.getConnectionById(id);
+  if (!connection || connection.companyId !== auth.companyId) return reply.code(404).send({ error: "Connection not found" });
+  const credential = await storage.getForUserAndConnection(auth.userId, id);
+  if (!credential?.isValid) return reply.code(400).send({ error: "Attach valid credential first" });
+
+  const payload = await elma.collectStructuralSnapshot(connection.baseUrl, cryptoBox.decrypt(credential.encryptedElmaToken));
+  const current = await storage.getCurrentSnapshotForConnection(id);
+  const snapshot = {
+    snapshotId: crypto.randomUUID(),
+    companyId: auth.companyId,
+    connectionId: id,
+    version: (current?.version ?? 0) + 1,
+    schemaHash: hashOf(payload),
+    status: "ready" as const,
+    payload,
+    createdByUserId: auth.userId,
+    createdAt: now()
+  };
+  await storage.saveSnapshot(snapshot);
+  return { snapshotId: snapshot.snapshotId, version: snapshot.version };
+});
+
+app.post("/connections/:id/semantic/generate", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const snapshot = await storage.getCurrentSnapshotForConnection(id);
+  if (!snapshot || snapshot.companyId !== auth.companyId) return reply.code(404).send({ error: "Snapshot not found" });
+  const credential = await storage.getForUserAndConnection(auth.userId, id);
+  if (!credential?.encryptedLlmToken) return reply.code(400).send({ error: "LLM token is required" });
+
+  const draft = await llm.generateSemanticDraft(
+    { snapshot: snapshot.payload },
+    cryptoBox.decrypt(credential.encryptedLlmToken)
+  );
+  const current = await storage.getCurrentSemanticMappingForConnection(id);
+  await storage.saveSemanticMapping({
+    semanticMappingId: current?.semanticMappingId ?? crypto.randomUUID(),
+    companyId: auth.companyId,
+    connectionId: id,
+    snapshotId: snapshot.snapshotId,
+    version: (current?.version ?? 0) + 1,
+    draft,
+    isEdited: false,
+    createdByUserId: auth.userId,
+    createdAt: current?.createdAt ?? now(),
+    updatedAt: now()
+  });
+  return { ok: true };
+});
+
+app.get("/connections/:id/semantic", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const mapping = await storage.getCurrentSemanticMappingForConnection(id);
+  if (!mapping || mapping.companyId !== auth.companyId) return reply.code(404).send({ error: "Semantic mapping not found" });
+  return mapping;
+});
+
+app.put("/connections/:id/semantic", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const body = z.object({
+    entities: z.array(z.object({ entityKey: z.string(), businessName: z.string(), description: z.string(), confidence: z.number() })),
+    relationNotes: z.array(z.object({ from: z.string(), to: z.string(), meaning: z.string() }))
+  }).parse(request.body) as SemanticMappingDraft;
+  const current = await storage.getCurrentSemanticMappingForConnection(id);
+  if (!current || current.companyId !== auth.companyId) return reply.code(404).send({ error: "Semantic mapping not found" });
+  await storage.saveSemanticMapping({ ...current, draft: body, isEdited: true, updatedAt: now() });
+  return { ok: true };
+});
+
+app.post("/chat", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const body = z.object({
+    connectionId: z.string().min(1),
+    question: z.string().min(1),
+    chatSessionId: z.string().optional(),
+    entity: z.string().optional()
+  }).parse(request.body);
+  const connection = await storage.getConnectionById(body.connectionId);
+  if (!connection || connection.companyId !== auth.companyId) return reply.code(404).send({ error: "Connection not found" });
+  const credential = await storage.getForUserAndConnection(auth.userId, body.connectionId);
+  if (!credential?.encryptedElmaToken || !credential.encryptedLlmToken) {
+    return reply.code(400).send({ error: "ELMA and LLM credentials are required" });
   }
+  const snapshot = await storage.getCurrentSnapshotForConnection(body.connectionId);
+  if (!snapshot) return reply.code(400).send({ error: "Snapshot required before chat" });
 
-  const sessionId = body.sessionId ?? crypto.randomUUID();
-  const now = new Date().toISOString();
-  if (!sessions.has(sessionId)) {
-    sessions.set(sessionId, {
-      sessionId,
-      ownerUserId: body.ownerUserId,
+  const chatSessionId = body.chatSessionId ?? crypto.randomUUID();
+  const existingSession = await storage.getSession(chatSessionId);
+  if (!existingSession) {
+    await storage.createSession({
+      chatSessionId,
+      companyId: auth.companyId,
+      userId: auth.userId,
       connectionId: body.connectionId,
-      createdAt: now,
-      updatedAt: now
+      title: body.question.slice(0, 60),
+      createdAt: now(),
+      updatedAt: now()
     });
   }
 
-  const compactContext = buildCompactPromptContext(
-    contexts.get(connection.connectionId) ?? fallbackContext(connection)
+  const compactContext = buildCompactPromptContext(snapshot);
+  const liveFacts = body.entity
+    ? [
+        {
+          summary: `Search in ${body.entity}`,
+          records: await elma.searchRecords({
+            baseUrl: connection.baseUrl,
+            token: cryptoBox.decrypt(credential.encryptedElmaToken),
+            entity: body.entity,
+            query: body.question
+          })
+        }
+      ]
+    : [];
+  const generated = await llm.generateAnswer(
+    { question: body.question, compactContext, liveFacts },
+    cryptoBox.decrypt(credential.encryptedLlmToken)
   );
-
-  const modelResponse = await llm.createResponse({
-    mode: body.mode,
-    question: body.question,
-    compactContext
+  await storage.saveMessage({
+    chatMessageId: crypto.randomUUID(),
+    chatSessionId,
+    role: "user",
+    content: body.question,
+    createdAt: now()
+  });
+  await storage.saveMessage({
+    chatMessageId: crypto.randomUUID(),
+    chatSessionId,
+    role: "assistant",
+    content: generated.answer,
+    createdAt: now()
   });
 
   const traceId = crypto.randomUUID();
-  traces.set(traceId, {
+  await storage.saveTrace({
     traceId,
-    sessionId,
-    mode: body.mode,
-    provider: "openai",
-    model: modelResponse.usedModel,
-    snapshotId: (await snapshotRepo.getLatestByConnection(connection.connectionId))?.snapshotId ?? null,
+    companyId: auth.companyId,
+    userId: auth.userId,
+    connectionId: body.connectionId,
+    chatSessionId,
+    snapshotId: snapshot.snapshotId,
+    question: body.question,
+    plannerOutput: { strategy: body.entity ? "lookup_plus_summary" : "summary_only" },
+    selectedTools: body.entity ? ["searchRecords"] : [],
     compactContext,
-    createdAt: now
+    responseMeta: { usedModel: generated.usedModel, factsCount: liveFacts.length },
+    error: null,
+    createdAt: now()
   });
 
-  const sessionMessages = messages.get(sessionId) ?? [];
-  sessionMessages.push(
-    { messageId: crypto.randomUUID(), sessionId, role: "user", content: body.question, createdAt: now },
-    {
-      messageId: crypto.randomUUID(),
-      sessionId,
-      role: "assistant",
-      content: modelResponse.answer,
-      createdAt: new Date().toISOString()
-    }
-  );
-  messages.set(sessionId, sessionMessages);
-
-  return { sessionId, traceId, answer: modelResponse.answer };
+  return { chatSessionId, answer: generated.answer, traceId };
 });
 
-app.get("/chat/sessions", async (req) => {
-  const ownerUserId = String((req.query as Record<string, string>)?.ownerUserId ?? "");
-  return [...sessions.values()].filter((session) => session.ownerUserId === ownerUserId);
+app.get("/chat/sessions", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  return { items: await storage.listSessions(auth.userId) };
 });
 
-app.get("/chat/sessions/:id", async (req, reply) => {
-  const { id } = req.params as { id: string };
-  const session = sessions.get(id);
-  if (!session) {
-    return reply.code(404).send({ error: "Session not found" });
-  }
-  return {
-    session,
-    messages: messages.get(id) ?? []
-  };
+app.get("/chat/sessions/:id", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const session = await storage.getSession(id);
+  if (!session || session.userId !== auth.userId) return reply.code(404).send({ error: "Session not found" });
+  return { session, messages: await storage.listMessages(id) };
 });
 
-app.get("/debug/prompt/:traceId", async (req, reply) => {
-  const { traceId } = req.params as { traceId: string };
-  const trace = traces.get(traceId);
-  if (!trace) {
-    return reply.code(404).send({ error: "Trace not found" });
-  }
+app.get("/traces/:id", async (request, reply) => {
+  const auth = await requireAuth(request as never, reply as never);
+  if (!auth) return;
+  const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+  const trace = await storage.getTraceById(id);
+  if (!trace || trace.companyId !== auth.companyId) return reply.code(404).send({ error: "Trace not found" });
   return trace;
 });
 
 const port = Number(process.env.PORT ?? 8080);
-app.listen({ host: "0.0.0.0", port }).catch((err) => {
-  app.log.error(err);
+app.listen({ host: "0.0.0.0", port }).catch((error) => {
+  app.log.error(error);
   process.exit(1);
 });

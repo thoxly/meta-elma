@@ -1,194 +1,301 @@
 export type EntityId = string;
 export type IsoTimestamp = string;
 
-export interface ElmaConnection {
-  connectionId: EntityId;
-  ownerUserId: EntityId;
-  sourceInstanceId: string;
-  sourceUserId: string;
-  displayName: string;
+export type ExternalSystem = "elma365";
+
+export interface Company {
+  companyId: EntityId;
+  name: string;
+  createdAt: IsoTimestamp;
+}
+
+export interface User {
+  userId: EntityId;
+  companyId: EntityId;
+  email: string;
+  passwordHash: string;
+  fullName: string;
   isActive: boolean;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 }
 
-export interface ElmaUser {
-  userId: string;
-  fullName: string;
-  email?: string;
+export interface RefreshSession {
+  sessionId: EntityId;
+  userId: EntityId;
+  refreshTokenHash: string;
+  expiresAt: IsoTimestamp;
+  revokedAt: IsoTimestamp | null;
+  createdAt: IsoTimestamp;
 }
 
-export interface ElmaNamespace {
+export interface Connection {
+  connectionId: EntityId;
+  companyId: EntityId;
+  system: ExternalSystem;
+  displayName: string;
+  baseUrl: string;
+  createdByUserId: EntityId;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+}
+
+export interface UserConnectionCredential {
+  credentialId: EntityId;
+  companyId: EntityId;
+  connectionId: EntityId;
+  userId: EntityId;
+  encryptedElmaToken: string;
+  encryptedLlmToken: string | null;
+  encryptionVersion: string;
+  isValid: boolean;
+  invalidReason?: string;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
+}
+
+export interface SnapshotNamespace {
   namespace: string;
   title: string;
 }
 
-export interface ElmaApp {
-  namespace: string;
-  code: string;
-  title: string;
-}
-
-export interface ElmaField {
+export interface SnapshotField {
   code: string;
   title: string;
   type: string;
   required: boolean;
+  relationHint?: string;
 }
 
-export interface ElmaStatus {
-  code: string;
-  title: string;
-}
-
-export interface ElmaStatusGroup {
-  code: string;
-  title: string;
-  statuses: ElmaStatus[];
-}
-
-export interface ElmaForm {
-  formId: string;
-  title: string;
-}
-
-export interface ElmaProcess {
+export interface SnapshotApp {
   namespace: string;
   code: string;
   title: string;
+  fields: SnapshotField[];
+  statuses: Array<{ code: string; title: string }>;
 }
 
-export interface ElmaPage {
+export interface SnapshotPage {
   pageId: string;
   title: string;
 }
 
-export interface ElmaGroup {
+export interface SnapshotProcess {
+  namespace: string;
+  code: string;
+  title: string;
+}
+
+export interface SnapshotGroup {
   groupId: string;
   title: string;
 }
 
-export interface ElmaRoleSubject {
-  subjectType: "role" | "group" | "user" | "unknown";
-  subjectId: string;
-  displayName: string;
+export interface StructuralSnapshotPayload {
+  namespaces: SnapshotNamespace[];
+  apps: SnapshotApp[];
+  pages: SnapshotPage[];
+  processes: SnapshotProcess[];
+  groups: SnapshotGroup[];
+  relationHints: Array<{ from: string; to: string; reason: string }>;
 }
 
-export interface ElmaAppSchema {
-  namespace: string;
-  appCode: string;
-  fields: ElmaField[];
-  statusGroups: ElmaStatusGroup[];
-  forms: ElmaForm[];
-}
-
-export interface UserScopedContext {
-  connectionId: EntityId;
-  sourceUserId: string;
-  sourceInstanceId: string;
-  fetchedAt: IsoTimestamp;
-  user: ElmaUser;
-  namespaces: ElmaNamespace[];
-  apps: ElmaApp[];
-  appSchemas: ElmaAppSchema[];
-  pages: ElmaPage[];
-  processes: ElmaProcess[];
-  groups: ElmaGroup[];
-  roleSubjects: ElmaRoleSubject[];
-}
-
-export interface CompactPromptContext {
-  compactVersion: string;
-  summary: string;
-  appOverview: Array<{ namespace: string; appCode: string; title: string }>;
-  processOverview: Array<{ namespace: string; code: string; title: string }>;
-  knownLimitations: string[];
-}
-
-export interface ContextSnapshot {
+export interface Snapshot {
   snapshotId: EntityId;
+  companyId: EntityId;
   connectionId: EntityId;
-  sourceUserId: string;
-  sourceInstanceId: string;
-  contextVersion: string;
+  version: number;
   schemaHash: string;
-  fetchedAt: IsoTimestamp;
-  mode: "raw_debug" | "normalized_full" | "compact_for_prompt";
-  status: "created" | "ready" | "failed";
+  status: "ready" | "failed";
+  payload: StructuralSnapshotPayload;
+  createdByUserId: EntityId;
+  createdAt: IsoTimestamp;
+}
+
+export interface SemanticMappingDraft {
+  entities: Array<{
+    entityKey: string;
+    businessName: string;
+    description: string;
+    confidence: number;
+  }>;
+  relationNotes: Array<{ from: string; to: string; meaning: string }>;
+}
+
+export interface SemanticMapping {
+  semanticMappingId: EntityId;
+  companyId: EntityId;
+  connectionId: EntityId;
+  snapshotId: EntityId;
+  version: number;
+  draft: SemanticMappingDraft;
+  isEdited: boolean;
+  createdByUserId: EntityId;
+  createdAt: IsoTimestamp;
+  updatedAt: IsoTimestamp;
 }
 
 export interface ChatSession {
-  sessionId: EntityId;
-  ownerUserId: EntityId;
+  chatSessionId: EntityId;
+  companyId: EntityId;
+  userId: EntityId;
   connectionId: EntityId;
+  title: string;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 }
 
 export interface ChatMessage {
-  messageId: EntityId;
-  sessionId: EntityId;
+  chatMessageId: EntityId;
+  chatSessionId: EntityId;
   role: "user" | "assistant" | "system";
   content: string;
   createdAt: IsoTimestamp;
 }
 
-export interface PromptTrace {
-  traceId: EntityId;
-  sessionId: EntityId;
+export interface CompactContext {
   snapshotId: EntityId;
-  promptMode: "ask_system" | "solution_assistant" | "context_inspect";
-  provider: string;
-  model: string;
-  latencyMs: number;
-  createdAt: IsoTimestamp;
-  tokenMetadata?: Record<string, unknown>;
-  errorMetadata?: Record<string, unknown>;
+  summary: string;
+  appOverview: Array<{ key: string; title: string }>;
+  processOverview: Array<{ key: string; title: string }>;
 }
 
-export interface ModelResponse {
+export interface Trace {
+  traceId: EntityId;
+  companyId: EntityId;
+  userId: EntityId;
+  connectionId: EntityId;
+  chatSessionId: EntityId;
+  snapshotId: EntityId | null;
+  question: string;
+  plannerOutput: Record<string, unknown>;
+  selectedTools: string[];
+  compactContext: CompactContext | null;
+  responseMeta: Record<string, unknown>;
+  error: string | null;
+  createdAt: IsoTimestamp;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface AuthContext {
+  userId: EntityId;
+  companyId: EntityId;
+  email: string;
+}
+
+export interface LiveRecord {
+  entity: string;
+  id: string;
+  fields: Record<string, unknown>;
+}
+
+export interface LiveQueryResult {
+  summary: string;
+  records: LiveRecord[];
+}
+
+export interface LlmGenerateInput {
+  question: string;
+  compactContext: CompactContext;
+  liveFacts: LiveQueryResult[];
+}
+
+export interface LlmGenerateOutput {
   answer: string;
-  rawOutput?: unknown;
   usedModel: string;
 }
 
-export interface ContextGapReport {
-  missingEntities: string[];
-  assumptions: string[];
-  recommendations: string[];
+export interface LlmSemanticInput {
+  snapshot: StructuralSnapshotPayload;
 }
 
-export interface IdentityResolver {
-  resolveCurrentUserId(): Promise<EntityId>;
+export interface PasswordHasher {
+  hash(password: string): Promise<string>;
+  verify(password: string, hash: string): Promise<boolean>;
 }
 
-export interface TokenProvider {
-  getTokenForConnection(connectionId: EntityId): Promise<string>;
+export interface TokenService {
+  createTokens(input: { userId: EntityId; companyId: EntityId; email: string }): AuthTokens;
+  verifyAccessToken(accessToken: string): AuthContext;
+  hashRefreshToken(refreshToken: string): string;
+}
+
+export interface CredentialCrypto {
+  encrypt(plainText: string): string;
+  decrypt(cipherText: string): string;
+  version(): string;
+}
+
+export interface ElmaConnector {
+  validateCredential(baseUrl: string, token: string): Promise<{ ok: boolean; externalUserId?: string }>;
+  collectStructuralSnapshot(baseUrl: string, token: string): Promise<StructuralSnapshotPayload>;
+  searchRecords(input: { baseUrl: string; token: string; entity: string; query: string }): Promise<LiveRecord[]>;
+  getRelatedRecords(input: {
+    baseUrl: string;
+    token: string;
+    entity: string;
+    recordId: string;
+    relatedEntity: string;
+  }): Promise<LiveRecord[]>;
+}
+
+export interface LlmProvider {
+  generateAnswer(input: LlmGenerateInput, llmToken: string): Promise<LlmGenerateOutput>;
+  generateSemanticDraft(input: LlmSemanticInput, llmToken: string): Promise<SemanticMappingDraft>;
+}
+
+export interface CompanyRepository {
+  createCompany(company: Company): Promise<void>;
+  getCompanyById(companyId: EntityId): Promise<Company | null>;
+}
+
+export interface UserRepository {
+  createUser(user: User): Promise<void>;
+  getByEmail(email: string): Promise<User | null>;
+  getUserById(userId: EntityId): Promise<User | null>;
+}
+
+export interface RefreshSessionRepository {
+  createRefreshSession(session: RefreshSession): Promise<void>;
+  getRefreshSessionById(sessionId: EntityId): Promise<RefreshSession | null>;
+  revoke(sessionId: EntityId): Promise<void>;
 }
 
 export interface ConnectionRepository {
-  create(connection: ElmaConnection): Promise<void>;
-  listByOwner(ownerUserId: EntityId): Promise<ElmaConnection[]>;
-  getById(connectionId: EntityId): Promise<ElmaConnection | null>;
+  createConnection(connection: Connection): Promise<void>;
+  listByCompany(companyId: EntityId): Promise<Connection[]>;
+  getConnectionById(connectionId: EntityId): Promise<Connection | null>;
 }
 
-export interface ContextPolicy {
-  isSnapshotStale(snapshot: ContextSnapshot): boolean;
-}
-
-export interface PromptPolicy {
-  buildSystemPrompt(mode: PromptTrace["promptMode"]): string;
-}
-
-export interface LLMProvider {
-  createResponse(input: {
-    mode: PromptTrace["promptMode"];
-    question: string;
-    compactContext: CompactPromptContext;
-  }): Promise<ModelResponse>;
+export interface CredentialRepository {
+  upsert(credential: UserConnectionCredential): Promise<void>;
+  getForUserAndConnection(userId: EntityId, connectionId: EntityId): Promise<UserConnectionCredential | null>;
+  listForUser(userId: EntityId): Promise<UserConnectionCredential[]>;
 }
 
 export interface SnapshotRepository {
-  saveSnapshot(snapshot: ContextSnapshot): Promise<void>;
-  getLatestByConnection(connectionId: EntityId): Promise<ContextSnapshot | null>;
+  saveSnapshot(snapshot: Snapshot): Promise<void>;
+  getCurrentSnapshotForConnection(connectionId: EntityId): Promise<Snapshot | null>;
+}
+
+export interface SemanticMappingRepository {
+  saveSemanticMapping(mapping: SemanticMapping): Promise<void>;
+  getCurrentSemanticMappingForConnection(connectionId: EntityId): Promise<SemanticMapping | null>;
+}
+
+export interface ChatRepository {
+  createSession(session: ChatSession): Promise<void>;
+  getSession(chatSessionId: EntityId): Promise<ChatSession | null>;
+  listSessions(userId: EntityId): Promise<ChatSession[]>;
+  saveMessage(message: ChatMessage): Promise<void>;
+  listMessages(chatSessionId: EntityId): Promise<ChatMessage[]>;
+}
+
+export interface TraceRepository {
+  saveTrace(trace: Trace): Promise<void>;
+  getTraceById(traceId: EntityId): Promise<Trace | null>;
 }

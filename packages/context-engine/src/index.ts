@@ -1,22 +1,16 @@
-import type { CompactPromptContext, UserScopedContext } from "@meta-elma/domain";
+import type { CompactContext, Snapshot } from "@meta-elma/domain";
 
-export function buildCompactPromptContext(context: UserScopedContext): CompactPromptContext {
+export function buildCompactPromptContext(snapshot: Snapshot): CompactContext {
   return {
-    compactVersion: "v1",
-    summary: `User ${context.user.fullName} has access to ${context.apps.length} apps in ${context.namespaces.length} namespaces.`,
-    appOverview: context.apps.slice(0, 50).map((app) => ({
-      namespace: app.namespace,
-      appCode: app.code,
+    snapshotId: snapshot.snapshotId,
+    summary: `Snapshot contains ${snapshot.payload.apps.length} apps, ${snapshot.payload.processes.length} processes and ${snapshot.payload.groups.length} groups.`,
+    appOverview: snapshot.payload.apps.slice(0, 25).map((app) => ({
+      key: `${app.namespace}.${app.code}`,
       title: app.title
     })),
-    processOverview: context.processes.slice(0, 50).map((process) => ({
-      namespace: process.namespace,
-      code: process.code,
+    processOverview: snapshot.payload.processes.slice(0, 25).map((process) => ({
+      key: `${process.namespace}.${process.code}`,
       title: process.title
-    })),
-    knownLimitations: [
-      "No business item content is included in v1 context.",
-      "Context includes only metadata-level entities from official ELMA Public Web API."
-    ]
+    }))
   };
 }

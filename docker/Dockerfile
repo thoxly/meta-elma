@@ -8,6 +8,7 @@ COPY packages/context-engine/package.json packages/context-engine/package.json
 COPY packages/llm-adapter/package.json packages/llm-adapter/package.json
 COPY packages/storage/package.json packages/storage/package.json
 COPY packages/domain/package.json packages/domain/package.json
+COPY packages/security/package.json packages/security/package.json
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 RUN pnpm install --frozen-lockfile
@@ -15,6 +16,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm --filter @meta-elma/api exec tsc -p /app/packages/domain/tsconfig.json \
   && pnpm --filter @meta-elma/api exec tsc -p /app/packages/storage/tsconfig.json \
+  && pnpm --filter @meta-elma/api exec tsc -p /app/packages/security/tsconfig.json \
   && pnpm --filter @meta-elma/api exec tsc -p /app/packages/elma-adapter/tsconfig.json \
   && pnpm --filter @meta-elma/api exec tsc -p /app/packages/context-engine/tsconfig.json \
   && pnpm --filter @meta-elma/api exec tsc -p /app/packages/llm-adapter/tsconfig.json \

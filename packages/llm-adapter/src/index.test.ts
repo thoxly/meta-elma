@@ -1,15 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { StaticPromptPolicy } from "./index.js";
+import { OpenAIResponsesProvider } from "./index.js";
 
-test("StaticPromptPolicy for ask_system contains no-hallucination rule", () => {
-  const policy = new StaticPromptPolicy();
-  const prompt = policy.buildSystemPrompt("ask_system");
-  assert.equal(prompt.includes("Do not invent ELMA features"), true);
+test("generateAnswer returns warning when llm token missing", async () => {
+  const provider = new OpenAIResponsesProvider();
+  const result = await provider.generateAnswer(
+    {
+      question: "test",
+      compactContext: { snapshotId: "s1", summary: "summary", appOverview: [], processOverview: [] },
+      liveFacts: []
+    },
+    ""
+  );
+  assert.equal(result.answer.includes("LLM token is missing"), true);
 });
 
-test("StaticPromptPolicy for context_inspect focuses on gaps", () => {
-  const policy = new StaticPromptPolicy();
-  const prompt = policy.buildSystemPrompt("context_inspect");
-  assert.equal(prompt.includes("gaps"), true);
+test("generateSemanticDraft maps apps to semantic entities", async () => {
+  const provider = new OpenAIResponsesProvider();
+  const result = await provider.generateSemanticDraft(
+    {
+      snapshot: {
+        namespaces: [],
+        apps: [{ namespace: "crm", code: "deals", title: "Deals", fields: [], statuses: [] }],
+        pages: [],
+        processes: [],
+        groups: [],
+        relationHints: []
+      }
+    },
+    ""
+  );
+  assert.equal(result.entities.length, 1);
 });
