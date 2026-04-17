@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@meta-elma/contracts": "workspace:*",
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",
     "react": "^19.0.0",

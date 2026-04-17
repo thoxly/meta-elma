@@ -29,7 +29,7 @@ B2B multi-tenant read-only AI assistant for ELMA365.
 ## Connections lifecycle (current)
 
 1. Register/Login (`/auth/register`, `/auth/login`).
-2. Create shared ELMA connection (`POST /connections` with `displayName + baseUrl`).
+2. Create shared ELMA connection (`POST /connections` with `displayName + baseUrl + elmaToken`).
 3. Read aggregated lifecycle state (`GET /connections`, `GET /connections/:id/state`).
 4. Configure and validate ELMA credential (required):
    - `PUT /connections/:id/elma-credentials`
@@ -45,6 +45,9 @@ B2B multi-tenant read-only AI assistant for ELMA365.
 7. Review/edit semantic mapping (`GET/PUT /connections/:id/semantic`).
 8. Ask chat grounded by snapshot + semantic + optional live lookup (`POST /chat`).
 9. Inspect trace payload (`GET /traces/:id`).
+10. Refresh/logout auth session:
+   - `POST /auth/refresh`
+   - `POST /auth/logout`
 
 ### Lifecycle semantics
 
@@ -75,6 +78,7 @@ B2B multi-tenant read-only AI assistant for ELMA365.
 
 ## Notes
 
-- Deployment instructions are in `docs/deploy.md`.
+- Full API contract is in `docs/contracts/api-http.md`.
+- Deployment and rollback runbooks are in `docs/runbooks/`.
 - Architecture decision notes are in `docs/adr`.
 - Storage layer now persists to YDB tables and initializes schema on API startup.

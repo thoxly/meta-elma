@@ -1,8 +1,5 @@
-export type Tokens = { accessToken: string; refreshToken: string };
-export type LoginResponse = {
-  tokens: Tokens;
-  user: { userId: string; companyId: string; email: string; fullName: string };
-};
+import type { CreateConnectionResponse, GetSemanticResponse, ListConnectionsResponse, ListJobsResponse, LoginResponse } from "@meta-elma/contracts";
+export type { LoginResponse } from "@meta-elma/contracts";
 
 let apiAuthState: LoginResponse | null = null;
 let apiAuthStateChangedListener: ((auth: LoginResponse | null) => void) | null = null;
@@ -121,10 +118,10 @@ export const api = {
     return request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify(input) });
   },
   listConnections(accessToken: string) {
-    return request<{ items: ConnectionState[] }>("/connections", {}, accessToken);
+    return request<ListConnectionsResponse>("/connections", {}, accessToken);
   },
   createConnection(accessToken: string, input: { displayName: string; baseUrl: string; elmaToken: string }) {
-    return request<{ connectionId: string }>("/connections", { method: "POST", body: JSON.stringify(input) }, accessToken);
+    return request<CreateConnectionResponse>("/connections", { method: "POST", body: JSON.stringify(input) }, accessToken);
   },
   deleteConnection(accessToken: string, connectionId: string) {
     return request<{ ok: boolean }>(`/connections/${connectionId}`, { method: "DELETE" }, accessToken);
@@ -148,7 +145,7 @@ export const api = {
     return request<{ jobId: string; status: "queued" }>(`/connections/${connectionId}/jobs`, { method: "POST", body: JSON.stringify(input) }, accessToken);
   },
   listJobs(accessToken: string, connectionId: string) {
-    return request<{ items: ConnectionJob[] }>(`/connections/${connectionId}/jobs`, {}, accessToken);
+    return request<ListJobsResponse>(`/connections/${connectionId}/jobs`, {}, accessToken);
   },
   getJob(accessToken: string, jobId: string) {
     return request<ConnectionJob>(`/jobs/${jobId}`, {}, accessToken);
@@ -156,16 +153,8 @@ export const api = {
   getConnectionSchema(accessToken: string, connectionId: string) {
     return request<ConnectionSchemaSnapshot>(`/connections/${connectionId}/schema`, {}, accessToken);
   },
-  generateSemantic(accessToken: string, connectionId: string) {
-    return request<{ ok: boolean }>(`/connections/${connectionId}/semantic/generate`, { method: "POST" }, accessToken);
-  },
   getSemantic(accessToken: string, connectionId: string) {
-    return request<{
-      draft: {
-        entities: Array<{ entityKey: string; businessName: string; description: string; confidence: number }>;
-        relationNotes: Array<{ from: string; to: string; meaning: string }>;
-      };
-    }>(`/connections/${connectionId}/semantic`, {}, accessToken);
+    return request<GetSemanticResponse>(`/connections/${connectionId}/semantic`, {}, accessToken);
   },
   saveSemantic(
     accessToken: string,

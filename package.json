@@ -8,6 +8,9 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter @meta-elma/api dev",
     "dev:web": "pnpm --filter @meta-elma/web dev",
+    "contract:check": "bash ./scripts/check-contract-drift.sh",
+    "infra:validate": "terraform -chdir=terraform fmt -check && terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate",
+    "security:audit": "pnpm audit --audit-level high",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"

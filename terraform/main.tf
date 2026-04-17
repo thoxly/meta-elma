@@ -54,6 +54,27 @@ resource "yandex_serverless_container" "backend" {
   secrets {
     id                   = var.lockbox_secret_id
     version_id           = var.lockbox_secret_version_id
+    key                  = "JWT_ACCESS_SECRET"
+    environment_variable = "JWT_ACCESS_SECRET"
+  }
+
+  secrets {
+    id                   = var.lockbox_secret_id
+    version_id           = var.lockbox_secret_version_id
+    key                  = "JWT_REFRESH_SECRET"
+    environment_variable = "JWT_REFRESH_SECRET"
+  }
+
+  secrets {
+    id                   = var.lockbox_secret_id
+    version_id           = var.lockbox_secret_version_id
+    key                  = "CREDENTIAL_MASTER_SECRET"
+    environment_variable = "CREDENTIAL_MASTER_SECRET"
+  }
+
+  secrets {
+    id                   = var.lockbox_secret_id
+    version_id           = var.lockbox_secret_version_id
     key                  = "OPENAI_API_KEY"
     environment_variable = "OPENAI_API_KEY"
   }
@@ -119,6 +140,20 @@ resource "yandex_api_gateway" "http" {
       /auth/login:
         post:
           operationId: authLogin
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /auth/refresh:
+        post:
+          operationId: authRefresh
+          x-yc-apigateway-integration:
+            type: serverless_containers
+            container_id: ${yandex_serverless_container.backend.id}
+            service_account_id: ${var.runtime_sa_id}
+      /auth/logout:
+        post:
+          operationId: authLogout
           x-yc-apigateway-integration:
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}
@@ -313,40 +348,6 @@ resource "yandex_api_gateway" "http" {
               type: string
         get:
           operationId: getTrace
-          x-yc-apigateway-integration:
-            type: serverless_containers
-            container_id: ${yandex_serverless_container.backend.id}
-            service_account_id: ${var.runtime_sa_id}
-      /context/refresh:
-        post:
-          operationId: contextRefresh
-          x-yc-apigateway-integration:
-            type: serverless_containers
-            container_id: ${yandex_serverless_container.backend.id}
-            service_account_id: ${var.runtime_sa_id}
-        options:
-          operationId: contextRefreshOptions
-          x-yc-apigateway-integration:
-            type: serverless_containers
-            container_id: ${yandex_serverless_container.backend.id}
-            service_account_id: ${var.runtime_sa_id}
-      /context/current:
-        get:
-          operationId: contextCurrent
-          x-yc-apigateway-integration:
-            type: serverless_containers
-            container_id: ${yandex_serverless_container.backend.id}
-            service_account_id: ${var.runtime_sa_id}
-      /context/current/compact:
-        get:
-          operationId: contextCurrentCompact
-          x-yc-apigateway-integration:
-            type: serverless_containers
-            container_id: ${yandex_serverless_container.backend.id}
-            service_account_id: ${var.runtime_sa_id}
-      /debug/context:
-        get:
-          operationId: debugContext
           x-yc-apigateway-integration:
             type: serverless_containers
             container_id: ${yandex_serverless_container.backend.id}

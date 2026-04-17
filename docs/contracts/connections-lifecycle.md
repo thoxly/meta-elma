@@ -46,6 +46,17 @@ LLM (optional):
 
 - `PUT /connections/:id/llm-settings`
 - `POST /connections/:id/llm-settings/validate`
+- `GET /connections/:id/semantic`
+- `PUT /connections/:id/semantic`
+
+## Auth session lifecycle
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+
+Refresh token sessions are rotated on refresh and revoked on logout.
 
 ## Operational jobs
 
@@ -98,4 +109,12 @@ Chat flow (`POST /chat`) expects:
 - LLM credential present
 - snapshot exists
 - semantic mapping exists and matches current snapshot
+
+## Error model
+
+Non-2xx responses follow:
+
+- `error`: readable message
+- `code` (optional): stable machine code
+- `details` (optional): structured context
 
